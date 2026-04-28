@@ -1,0 +1,58 @@
+{
+  "name": "@bandeira-tech/b3nd-core",
+  "version": "0.9.4",
+  "description": "B3nd Core — framework foundation: types, encoding, clients, rig, network",
+  "exports": {
+    ".": "./src/mod.ts",
+    "./types": "./src/types.ts",
+    "./encoding": "./src/encoding.ts",
+    "./binary": "./src/binary.ts",
+    "./network": "./src/network.ts",
+    "./client-console": "./src/client-console.ts"
+  },
+  "nodeModulesDir": "auto",
+  "imports": {
+    "@std/assert": "jsr:@std/assert@^1.0.15",
+    "@std/encoding": "jsr:@std/encoding@^1.0.10",
+    "canonicalize": "npm:canonicalize@2.0.0"
+  },
+  "tasks": {
+    "check": "deno check src/mod.ts",
+    "test": "deno test --allow-all libs/"
+  },
+  "compilerOptions": {
+    "strict": true,
+    "lib": [
+      "ES2020",
+      "DOM",
+      "DOM.Iterable",
+      "deno.ns"
+    ]
+  },
+  "publish": {
+    "exclude": [
+      "!_vendor/",
+      "libs/",
+      "tests/",
+      "node_modules/",
+      ".env*",
+      "*.test.ts",
+      "*.lock"
+    ]
+  },
+  "workspace": [
+    "libs/b3nd-core",
+    "libs/b3nd-rig",
+    "libs/b3nd-network",
+    "libs/b3nd-client-memory",
+    "libs/b3nd-client-http",
+    "libs/b3nd-client-ws",
+    "libs/b3nd-client-console",
+    "libs/b3nd-client-grpc",
+    "libs/b3nd-server-http",
+    "libs/b3nd-server-grpc",
+    "libs/b3nd-proto",
+    "libs/b3nd-testing",
+    "libs/b3nd-encrypt"
+  ]
+}

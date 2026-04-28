@@ -1,0 +1,5 @@
+{
+  "name": "@b3nd/server-grpc",
+  "version": "0.1.0",
+  "exports": "./mod.ts"
+}
