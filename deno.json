@@ -1,6 +1,6 @@
 {
   "name": "@bandeira-tech/b3nd-core",
-  "version": "0.9.4",
+  "version": "0.10.0",
   "description": "B3nd Core — framework foundation: types, encoding, clients, rig, network",
   "exports": {
     ".": "./src/mod.ts",
@@ -8,6 +8,11 @@
     "./encoding": "./src/encoding.ts",
     "./binary": "./src/binary.ts",
     "./network": "./src/network.ts",
+    "./rig": "./src/rig.ts",
+    "./identity": "./src/identity.ts",
+    "./client-http": "./src/client-http.ts",
+    "./client-ws": "./src/client-ws.ts",
+    "./client-memory": "./src/client-memory.ts",
     "./client-console": "./src/client-console.ts"
   },
   "imports": {
