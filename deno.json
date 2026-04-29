@@ -32,27 +32,20 @@
   "publish": {
     "exclude": [
       "!_vendor/",
-      "libs/",
+      "libs/b3nd-server-grpc/",
+      "libs/b3nd-server-http/",
+      "libs/b3nd-testing/",
+      "libs/b3nd-proto/buf.gen.yaml",
+      "libs/b3nd-proto/b3nd.proto",
+      "libs/**/*.test.ts",
+      "libs/**/*_test.ts",
+      "libs/**/README.md",
+      "libs/**/deno.json",
       "tests/",
       "node_modules/",
       ".env*",
       "*.test.ts",
       "*.lock"
     ]
-  },
-  "workspace": [
-    "libs/b3nd-core",
-    "libs/b3nd-rig",
-    "libs/b3nd-network",
-    "libs/b3nd-client-memory",
-    "libs/b3nd-client-http",
-    "libs/b3nd-client-ws",
-    "libs/b3nd-client-console",
-    "libs/b3nd-client-grpc",
-    "libs/b3nd-server-http",
-    "libs/b3nd-server-grpc",
-    "libs/b3nd-proto",
-    "libs/b3nd-testing",
-    "libs/b3nd-encrypt"
-  ]
+  }
 }
