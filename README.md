@@ -132,12 +132,13 @@ const net = network(localRig, [
 | `b3nd-client-http` | HTTP transport client |
 | `b3nd-client-ws` | WebSocket transport client with reconnection |
 | `b3nd-client-console` | Console output (write-only, for debugging) |
-| `b3nd-client-grpc` | gRPC transport client |
-| `b3nd-server-http` | HTTP server |
-| `b3nd-server-grpc` | gRPC server |
-| `b3nd-proto` | Protocol buffer definitions |
 | `b3nd-testing` | Shared test suites and helpers |
 | `b3nd-encrypt` | Ed25519 signing, X25519 encryption, AES-GCM, PBKDF2 |
+
+Server transports and gRPC live in their own packages:
+
+- [@bandeira-tech/b3nd-server-http](https://github.com/bandeira-tech/b3nd-server-http) — Hono-backed HTTP `ServerResolver`
+- [@bandeira-tech/b3nd-grpc](https://github.com/bandeira-tech/b3nd-grpc) — Connect-protocol client + server + wire schema
 
 ## Subpath Exports
 

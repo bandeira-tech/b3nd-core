@@ -11,8 +11,8 @@
  *
  * @example
  * ```typescript
- * import { httpServer } from "@b3nd/server-http";
- * import { grpcServer } from "@b3nd/server-grpc";
+ * import { httpServer } from "@bandeira-tech/b3nd-server-http";
+ * import { grpcServer } from "@bandeira-tech/b3nd-grpc/server";
  *
  * const servers = createServers(rig, [
  *   httpServer({ port: 3000 }),
@@ -61,6 +61,9 @@ export interface ServerResolver {
  *
  * @example
  * ```typescript
+ * import { httpServer } from "@bandeira-tech/b3nd-server-http";
+ * import { grpcServer } from "@bandeira-tech/b3nd-grpc/server";
+ *
  * const servers = createServers(rig, [
  *   httpServer({ port: 3000 }),
  *   grpcServer({ port: 50051 }),

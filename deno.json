@@ -31,11 +31,7 @@
   "publish": {
     "exclude": [
       "!_vendor/",
-      "libs/b3nd-server-grpc/",
-      "libs/b3nd-server-http/",
       "libs/b3nd-testing/",
-      "libs/b3nd-proto/buf.gen.yaml",
-      "libs/b3nd-proto/b3nd.proto",
       "libs/**/*.test.ts",
       "libs/**/*_test.ts",
       "libs/**/README.md",
