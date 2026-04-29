@@ -217,9 +217,11 @@ export class Identity {
   }
 
   /** Wrap a payload into an AuthenticatedMessage with this identity's signature. */
-  async signMessage<T>(payload: T): Promise<AuthenticatedMessage<T>> {
+  signMessage<T>(payload: T): Promise<AuthenticatedMessage<T>> {
     if (!this._signingPrivateKey) {
-      throw new Error("Cannot sign: this is a public-only identity");
+      return Promise.reject(
+        new Error("Cannot sign: this is a public-only identity"),
+      );
     }
     return createAuthenticatedMessage(payload, [{
       privateKey: this._signingPrivateKey,
@@ -228,12 +230,12 @@ export class Identity {
   }
 
   /** Verify a signature against this identity's public key. */
-  async verify(payload: unknown, signature: string): Promise<boolean> {
+  verify(payload: unknown, signature: string): Promise<boolean> {
     return edVerify(this.pubkey, signature, payload);
   }
 
   /** Encrypt data for a recipient's public encryption key. */
-  async encrypt(
+  encrypt(
     data: Uint8Array,
     recipientEncPubkeyHex: string,
   ): Promise<EncryptedPayload> {
@@ -241,9 +243,11 @@ export class Identity {
   }
 
   /** Decrypt data sent to this identity. */
-  async decrypt(payload: EncryptedPayload): Promise<Uint8Array> {
+  decrypt(payload: EncryptedPayload): Promise<Uint8Array> {
     if (!this._encryptionPrivateKey) {
-      throw new Error("Cannot decrypt: no encryption private key");
+      return Promise.reject(
+        new Error("Cannot decrypt: no encryption private key"),
+      );
     }
     return asymDecrypt(payload, this._encryptionPrivateKey);
   }

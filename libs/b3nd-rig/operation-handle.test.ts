@@ -106,7 +106,9 @@ Deno.test("OperationHandle - fires handle:emit with handler emissions", async ()
 
 Deno.test("OperationHandle - fires route:success per (emission, connection)", async () => {
   const primary = memClient();
-  const primaryReceive = connection(primary, ["mutable://*"], { id: "primary" });
+  const primaryReceive = connection(primary, ["mutable://*"], {
+    id: "primary",
+  });
   const primaryRead = connection(primary, ["*"], { id: "primary" });
   const mirror = connection(memClient(), ["mutable://*"], { id: "mirror" });
   const rig = new Rig({
@@ -158,8 +160,8 @@ Deno.test("OperationHandle - fires route:error when a connection rejects", async
 
 Deno.test("OperationHandle - .settled resolves after all routes settle", async () => {
   const _route24 = connection(memClient(), ["*"], {
-        id: "memory",
-      });
+    id: "memory",
+  });
   const rig = new Rig({
     routes: {
       receive: [_route24],
@@ -174,8 +176,8 @@ Deno.test("OperationHandle - .settled resolves after all routes settle", async (
 
 Deno.test("OperationHandle - .settled fires settled event with results", async () => {
   const _route25 = connection(memClient(), ["*"], {
-        id: "memory",
-      });
+    id: "memory",
+  });
   const rig = new Rig({
     routes: {
       receive: [_route25],

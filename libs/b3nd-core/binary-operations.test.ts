@@ -7,7 +7,7 @@
 
 /// <reference lib="deno.ns" />
 
-import { assertEquals } from "jsr:@std/assert";
+import { assertEquals } from "@std/assert";
 import { HttpClient } from "../b3nd-client-http/mod.ts";
 import { MockHttpServer } from "../b3nd-testing/mock-http-server.ts";
 

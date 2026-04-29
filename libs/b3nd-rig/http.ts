@@ -283,7 +283,7 @@ export function httpApi(
 
       const since = Number(url.searchParams.get("since") || "0");
       const lastEventId = req.headers.get("Last-Event-ID");
-      const effectiveSince = lastEventId ? Number(lastEventId) : since;
+      const _effectiveSince = lastEventId ? Number(lastEventId) : since;
 
       const sub: SseSubscriber = {
         prefix: uri,

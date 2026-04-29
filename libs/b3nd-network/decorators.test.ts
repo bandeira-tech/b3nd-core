@@ -5,7 +5,7 @@
 
 /// <reference lib="deno.ns" />
 
-import { assertEquals } from "jsr:@std/assert";
+import { assertEquals } from "@std/assert";
 import type { ProtocolInterfaceNode, ReadResult } from "../b3nd-core/types.ts";
 import { bestEffort } from "./decorators.ts";
 

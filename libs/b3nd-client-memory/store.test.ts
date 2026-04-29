@@ -7,7 +7,7 @@
 
 /// <reference lib="deno.ns" />
 
-import { assertEquals } from "jsr:@std/assert";
+import { assertEquals } from "@std/assert";
 import { runSharedStoreSuite } from "../b3nd-testing/shared-store-suite.ts";
 import { MemoryStore } from "./store.ts";
 

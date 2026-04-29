@@ -9,7 +9,7 @@
 
 /// <reference lib="deno.ns" />
 
-import { assertEquals } from "jsr:@std/assert";
+import { assertEquals } from "@std/assert";
 import { ObserveEmitter, type ObserveListener } from "./observe-emitter.ts";
 
 /**

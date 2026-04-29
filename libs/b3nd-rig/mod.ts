@@ -81,12 +81,7 @@ export type {
   RigHooks,
   SendCtx,
 } from "./hooks.ts";
-export {
-  resolveHooks,
-  runAfter,
-  runBefore,
-  runOnError,
-} from "./hooks.ts";
+export { resolveHooks, runAfter, runBefore, runOnError } from "./hooks.ts";
 
 // Events
 export type { EventHandler, RigEvent, RigEventName } from "./events.ts";

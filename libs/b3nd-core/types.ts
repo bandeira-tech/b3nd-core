@@ -379,7 +379,6 @@ export interface Store {
   capabilities?(): StoreCapabilities;
 }
 
-
 /**
  * Configuration for HttpClient
  */

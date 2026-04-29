@@ -19,7 +19,7 @@ const local = connection(new DataStoreClient(new MemoryStore()), ["*"]);
 const rig = new Rig({
   routes: {
     receive: [local],
-    read:    [local],
+    read: [local],
     observe: [local],
   },
   // Canon: program classifies hash:// envelopes; handler decomposes
@@ -117,10 +117,10 @@ for await (const result of rig.observe<T>("mutable://app/*", abort.signal)) {
 
 ## Routes
 
-A connection is a client + URI pattern list. Connections are bound
-into per-op route arrays — `receive`, `read`, `observe`. Each route
-makes its own decision; the same connection can be referenced from
-multiple routes when it serves them with the same filter.
+A connection is a client + URI pattern list. Connections are bound into per-op
+route arrays — `receive`, `read`, `observe`. Each route makes its own decision;
+the same connection can be referenced from multiple routes when it serves them
+with the same filter.
 
 ```typescript
 import { connection, Rig } from "@b3nd/rig";
@@ -133,7 +133,10 @@ const cache = connection(redisClient, [
 
 // Primary storage (serves reads, writes, and observes)
 const primary = connection(postgresClient, [
-  "mutable://*", "immutable://*", "hash://*", "link://*",
+  "mutable://*",
+  "immutable://*",
+  "hash://*",
+  "link://*",
 ]);
 
 // Local-only (never leaves the device)
@@ -141,24 +144,23 @@ const local = connection(memoryClient, ["local://*", "rig://*"]);
 
 const rig = new Rig({
   routes: {
-    receive: [primary, local],          // broadcast to all matching
-    read:    [cache, primary, local],   // first match wins (cache first)
+    receive: [primary, local], // broadcast to all matching
+    read: [cache, primary, local], // first match wins (cache first)
     observe: [primary, local],
   },
 });
 ```
 
-`receive` broadcasts to every matching connection. `read` tries each
-matching connection in declaration order until one returns a hit (or,
-for trailing-slash list reads, gathers across every match). `observe`
-delegates to the first connection that accepts; the client owns the
-underlying transport.
+`receive` broadcasts to every matching connection. `read` tries each matching
+connection in declaration order until one returns a hit (or, for trailing-slash
+list reads, gathers across every match). `observe` delegates to the first
+connection that accepts; the client owns the underlying transport.
 
 When a single client needs different patterns per op, make separate
 `connection(...)` calls — each binds one pattern list.
 
-Patterns use the same Express-style matching as observe: `:param`
-captures a segment, `*` matches the rest.
+Patterns use the same Express-style matching as observe: `:param` captures a
+segment, `*` matches the rest.
 
 ## Hooks
 
@@ -167,8 +169,8 @@ Hooks are synchronous pipelines that run inside operations. Frozen after init.
 - **Pre-hooks** run before the operation. **Throw** to reject — no silent drops.
 - **Post-hooks** run after. They observe the result but **cannot modify it**.
 - **`onError`** runs in the catch path for every error the rig observes
-  (`process`, `handle`, `route`, `reaction` phases). **Throw** to abort
-  the whole operation; **return** to let normal error handling continue.
+  (`process`, `handle`, `route`, `reaction` phases). **Throw** to abort the
+  whole operation; **return** to let normal error handling continue.
 
 ```typescript
 const c = connection(client, ["*"]);
@@ -210,8 +212,8 @@ per-stage events scoped to that single operation:
 const op = rig.send([msg]);
 op.on("process:error", (e) => log("classification failed:", e.error));
 op.on("route:error", (e) => retry(e.emission, e.connectionId));
-const results = await op;       // pipeline ack
-await op.settled;                // wait for all routes to settle
+const results = await op; // pipeline ack
+await op.settled; // wait for all routes to settle
 ```
 
 ## Events

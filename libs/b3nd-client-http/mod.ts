@@ -209,7 +209,7 @@ export class HttpClient implements ProtocolInterfaceNode {
             }
           } else {
             await response.text();
-            for (const uri of singleUris) {
+            for (const _uri of singleUris) {
               results.push({
                 success: false,
                 error: `Read failed: ${response.statusText}`,

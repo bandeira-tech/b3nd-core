@@ -2,9 +2,11 @@
  * WebSocketClient tests with proper mocking
  */
 
+// deno-lint-ignore-file no-explicit-any
+
 /// <reference lib="deno.ns" />
 
-import { assertEquals } from "jsr:@std/assert";
+import { assertEquals } from "@std/assert";
 import { WebSocketClient } from "./mod.ts";
 import {
   runSharedSuite,
@@ -62,7 +64,7 @@ class MockWebSocket {
           type: "message",
           data: JSON.stringify(response),
         });
-      } catch (error) {
+      } catch {
         this.dispatchEvent({
           type: "error",
           error: "Invalid request format",
@@ -208,7 +210,7 @@ function createMockWebSocketClient() {
  */
 const factories: TestClientFactories = {
   happy: () => {
-    const mock = createMockWebSocketClient();
+    createMockWebSocketClient();
     const client = new WebSocketClient({
       url: "ws://localhost:8765",
       reconnect: { enabled: false },
@@ -218,7 +220,7 @@ const factories: TestClientFactories = {
   },
 
   connectionError: () => {
-    const mock = createMockWebSocketClient();
+    createMockWebSocketClient();
 
     // Create a mock that simulates connection failure
     class FailingMockWebSocket extends MockWebSocket {
@@ -228,7 +230,7 @@ const factories: TestClientFactories = {
         this.readyState = MockWebSocket.CLOSED;
       }
 
-      override send(data: string) {
+      override send(_data: string) {
         // Simulate connection failure when trying to send
         setTimeout(() => {
           this.dispatchEvent({ type: "error", error: "Connection failed" });
@@ -252,7 +254,7 @@ const factories: TestClientFactories = {
   },
 
   validationError: () => {
-    const mock = createMockWebSocketClient();
+    createMockWebSocketClient();
 
     // Create a mock that simulates validation failure (rejects data without a name field)
     class ValidationFailingMockWebSocket extends MockWebSocket {

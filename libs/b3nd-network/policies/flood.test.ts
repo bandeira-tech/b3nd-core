@@ -8,7 +8,7 @@
 
 /// <reference lib="deno.ns" />
 
-import { assertEquals, assertRejects } from "jsr:@std/assert";
+import { assertEquals, assertRejects } from "@std/assert";
 import { MemoryStore } from "../../b3nd-client-memory/store.ts";
 import { SimpleClient } from "../../b3nd-core/simple-client.ts";
 import type {

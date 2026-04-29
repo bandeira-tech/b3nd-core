@@ -191,9 +191,7 @@ export interface WatchOptions {
 /**
  * Options for rig.watchAll() — reactive collection watching.
  */
-// deno-lint-ignore no-empty-interface
-export interface WatchAllOptions extends WatchOptions {
-}
+export type WatchAllOptions = WatchOptions;
 
 /**
  * A snapshot emitted by watchAll() when any item in the collection changes.

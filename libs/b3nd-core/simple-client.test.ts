@@ -6,7 +6,7 @@
 
 /// <reference lib="deno.ns" />
 
-import { assertEquals } from "jsr:@std/assert";
+import { assertEquals } from "@std/assert";
 import { SimpleClient } from "./simple-client.ts";
 import { MemoryStore } from "../b3nd-client-memory/store.ts";
 
@@ -122,11 +122,15 @@ Deno.test({
   fn: async () => {
     // Store without observe — observe lives on the client.
     const bareStore: import("./types.ts").Store = {
-      write: async (entries) => entries.map(() => ({ success: true })),
-      read: async (uris) =>
-        uris.map(() => ({ success: false, error: "not found" })),
-      delete: async (uris) => uris.map(() => ({ success: true })),
-      status: async () => ({ status: "healthy" }),
+      write: (entries) =>
+        Promise.resolve(entries.map(() => ({ success: true as const }))),
+      read: (uris) =>
+        Promise.resolve(
+          uris.map(() => ({ success: false as const, error: "not found" })),
+        ),
+      delete: (uris) =>
+        Promise.resolve(uris.map(() => ({ success: true as const }))),
+      status: () => Promise.resolve({ status: "healthy" as const }),
     };
     const client = new SimpleClient(bareStore);
     const ac = new AbortController();

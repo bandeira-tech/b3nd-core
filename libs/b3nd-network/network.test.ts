@@ -9,16 +9,12 @@
 
 /// <reference lib="deno.ns" />
 
-import { assertEquals } from "jsr:@std/assert";
+import { assertEquals } from "@std/assert";
 import { MemoryStore } from "../b3nd-client-memory/store.ts";
 import { SimpleClient } from "../b3nd-core/simple-client.ts";
 import { Rig } from "../b3nd-rig/rig.ts";
 import { connection } from "../b3nd-rig/connection.ts";
-import type {
-  Message,
-  ProtocolInterfaceNode,
-  ReadResult,
-} from "../b3nd-core/types.ts";
+import type { Message, ProtocolInterfaceNode } from "../b3nd-core/types.ts";
 import { network, peer } from "./mod.ts";
 import type { Policy } from "./mod.ts";
 
@@ -378,6 +374,7 @@ Deno.test("network() surfaces peer observe errors via onError", async () => {
   const badPeer: ProtocolInterfaceNode = {
     receive: (m) => Promise.resolve(m.map(() => ({ accepted: true }))),
     read: () => Promise.resolve([]),
+    // deno-lint-ignore require-yield
     observe: async function* () {
       throw new Error("observe broken");
     },

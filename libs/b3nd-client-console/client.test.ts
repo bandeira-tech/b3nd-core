@@ -7,7 +7,7 @@
 
 /// <reference lib="deno.ns" />
 
-import { assertEquals } from "jsr:@std/assert";
+import { assertEquals } from "@std/assert";
 import { ConsoleClient } from "./client.ts";
 
 Deno.test("ConsoleClient - receive logs messages and returns accepted", async () => {

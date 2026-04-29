@@ -1,3 +1,5 @@
+// deno-lint-ignore-file no-import-prefix no-unversioned-import
+
 /**
  * @module
  * HTTP transport as a ServerResolver.

@@ -63,7 +63,7 @@ export class MemoryStore implements Store {
 
   // ── Write ────────────────────────────────────────────────────────
 
-  async write(entries: StoreEntry[]): Promise<StoreWriteResult[]> {
+  write(entries: StoreEntry[]): Promise<StoreWriteResult[]> {
     const results: StoreWriteResult[] = [];
 
     for (const entry of entries) {
@@ -80,7 +80,7 @@ export class MemoryStore implements Store {
       }
     }
 
-    return results;
+    return Promise.resolve(results);
   }
 
   private _writeOne(
@@ -106,7 +106,7 @@ export class MemoryStore implements Store {
 
   // ── Read ─────────────────────────────────────────────────────────
 
-  async read<T = unknown>(uris: string[]): Promise<ReadResult<T>[]> {
+  read<T = unknown>(uris: string[]): Promise<ReadResult<T>[]> {
     const results: ReadResult<T>[] = [];
 
     for (const uri of uris) {
@@ -117,7 +117,7 @@ export class MemoryStore implements Store {
       }
     }
 
-    return results;
+    return Promise.resolve(results);
   }
 
   private _readOne<T>(uri: string): ReadResult<T> {
@@ -179,7 +179,7 @@ export class MemoryStore implements Store {
 
   // ── Delete ───────────────────────────────────────────────────────
 
-  async delete(uris: string[]): Promise<DeleteResult[]> {
+  delete(uris: string[]): Promise<DeleteResult[]> {
     const results: DeleteResult[] = [];
 
     for (const uri of uris) {
@@ -194,7 +194,7 @@ export class MemoryStore implements Store {
       }
     }
 
-    return results;
+    return Promise.resolve(results);
   }
 
   private _deleteOne(uri: string): void {

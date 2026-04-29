@@ -1,5 +1,5 @@
 import { assertEquals, assertRejects } from "@std/assert";
-import type { ReadCtx, ReceiveCtx } from "./hooks.ts";
+import type { ReadCtx } from "./hooks.ts";
 import { resolveHooks, runAfter, runBefore } from "./hooks.ts";
 
 // ── runBefore ──

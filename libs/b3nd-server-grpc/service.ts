@@ -52,12 +52,12 @@ function errorResponse(message: string, status = 400): Response {
 export function createGrpcHandler(
   rig: Rig,
 ): (req: Request) => Promise<Response> {
-  return async (req: Request): Promise<Response> => {
+  return (req: Request): Promise<Response> => {
     const url = new URL(req.url);
     const path = url.pathname;
 
     if (req.method !== "POST" || !path.startsWith(SERVICE_PREFIX)) {
-      return new Response("Not Found", { status: 404 });
+      return Promise.resolve(new Response("Not Found", { status: 404 }));
     }
 
     const method = path.slice(SERVICE_PREFIX.length);
@@ -72,7 +72,7 @@ export function createGrpcHandler(
       case "Status":
         return handleStatus(rig);
       default:
-        return errorResponse(`Unknown method: ${method}`, 404);
+        return Promise.resolve(errorResponse(`Unknown method: ${method}`, 404));
     }
   };
 }

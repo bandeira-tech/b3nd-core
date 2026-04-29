@@ -52,9 +52,9 @@ export class WebSocketClient implements ProtocolInterfaceNode {
   /**
    * Ensure WebSocket connection is established
    */
-  private async ensureConnected(): Promise<void> {
+  private ensureConnected(): Promise<void> {
     if (this.connected && this.ws?.readyState === WebSocket.OPEN) {
-      return;
+      return Promise.resolve();
     }
 
     if (this.ws?.readyState === WebSocket.CONNECTING) {
@@ -89,7 +89,7 @@ export class WebSocketClient implements ProtocolInterfaceNode {
   /**
    * Establish WebSocket connection
    */
-  private async connect(): Promise<void> {
+  private connect(): Promise<void> {
     return new Promise<void>((resolve, reject) => {
       try {
         const url = new URL(this.config.url);
@@ -325,7 +325,6 @@ export class WebSocketClient implements ProtocolInterfaceNode {
     }
   }
 
-  // deno-lint-ignore require-yield
   async *observe<T = unknown>(
     _pattern: string,
     _signal: AbortSignal,

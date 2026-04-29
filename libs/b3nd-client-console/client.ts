@@ -47,7 +47,7 @@ export class ConsoleClient implements ProtocolInterfaceNode {
     this.log = logger ?? console.log;
   }
 
-  async receive(msgs: Message[]): Promise<ReceiveResult[]> {
+  receive(msgs: Message[]): Promise<ReceiveResult[]> {
     const results: ReceiveResult[] = [];
 
     for (const [uri, payload] of msgs) {
@@ -58,13 +58,13 @@ export class ConsoleClient implements ProtocolInterfaceNode {
       results.push({ accepted: true });
     }
 
-    return results;
+    return Promise.resolve(results);
   }
 
   read<T = unknown>(uris: string | string[]): Promise<ReadResult<T>[]> {
     const uriList = Array.isArray(uris) ? uris : [uris];
     return Promise.resolve(
-      uriList.map((uri) => ({
+      uriList.map(() => ({
         success: false as const,
         error: "ConsoleClient is write-only",
       })),
@@ -78,7 +78,11 @@ export class ConsoleClient implements ProtocolInterfaceNode {
     return {
       [Symbol.asyncIterator]() {
         return {
-          next: () => Promise.resolve({ value: undefined as any, done: true }),
+          next: () =>
+            Promise.resolve({
+              value: undefined as unknown as ReadResult<T>,
+              done: true,
+            }),
         };
       },
     };

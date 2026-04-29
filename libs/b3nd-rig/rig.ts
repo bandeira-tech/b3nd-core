@@ -27,13 +27,7 @@ import type {
   WatchAllSnapshot,
   WatchOptions,
 } from "./types.ts";
-import type {
-  ErrorHookCtx,
-  ReadCtx,
-  ReceiveCtx,
-  RigHooks,
-  SendCtx,
-} from "./hooks.ts";
+import type { ReadCtx, ReceiveCtx, RigHooks, SendCtx } from "./hooks.ts";
 import { resolveHooks, runAfter, runBefore, runOnError } from "./hooks.ts";
 import type { EventHandler, RigEventName } from "./events.ts";
 import { RigEventEmitter } from "./events.ts";
@@ -1226,5 +1220,4 @@ function createRouteDispatch(
 // ── Compile-time assertion ──
 // Rig structurally satisfies ProtocolInterfaceNode, so it can be
 // passed directly to any function that expects a client.
-// deno-lint-ignore no-unused-vars
 const _rigIsClient: ProtocolInterfaceNode = null! as Rig;

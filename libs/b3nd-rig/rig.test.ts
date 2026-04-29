@@ -253,7 +253,7 @@ Deno.test("Identity.fromPem - creates identity from PEM and pubkey", async () =>
   const exported = await original.export();
 
   // Export the signing private key as PEM via the encrypt module
-  const { exportPrivateKeyPem, pemToCryptoKey } = await import(
+  const { exportPrivateKeyPem } = await import(
     "../b3nd-encrypt/mod.ts"
   );
   const { decodeHex } = await import("../b3nd-core/encoding.ts");
@@ -524,7 +524,7 @@ Deno.test("Rig.read - reads multiple URIs", async () => {
   assertEquals(results.filter((r) => r.success).length, 2);
 });
 
-Deno.test("Rig.client - exposes underlying client", async () => {
+Deno.test("Rig.client - exposes underlying client", () => {
   const _route38 = connection(memClient(), ["*"]);
   const rig = new Rig({
     routes: {
@@ -540,8 +540,18 @@ Deno.test("Rig -multi-client dispatch composes correctly", async () => {
   // Two memory backends — writes should go to both, reads from first match
   const clientA = memClient();
   const clientB = memClient();
-  const _route39 = connection(clientA, ["mutable://*", "immutable://*", "hash://*", "local://*"]);
-  const _route40 = connection(clientB, ["mutable://*", "immutable://*", "hash://*", "local://*"]);
+  const _route39 = connection(clientA, [
+    "mutable://*",
+    "immutable://*",
+    "hash://*",
+    "local://*",
+  ]);
+  const _route40 = connection(clientB, [
+    "mutable://*",
+    "immutable://*",
+    "hash://*",
+    "local://*",
+  ]);
   const rig = new Rig({
     routes: {
       receive: [
@@ -1009,7 +1019,7 @@ Deno.test("readEncrypted many - returns null for missing URIs", async () => {
 
 // ── Rig.info() tests ──
 
-Deno.test("Rig.info - returns behavior info", async () => {
+Deno.test("Rig.info - returns behavior info", () => {
   const _route68 = connection(memClient(), ["*"]);
   const rig = new Rig({
     routes: {
@@ -1036,7 +1046,7 @@ Deno.test("Rig.info - returns behavior info", async () => {
   assertEquals(info.behavior.reactors, 1);
 });
 
-Deno.test("Rig.info - empty rig has empty behavior", async () => {
+Deno.test("Rig.info - empty rig has empty behavior", () => {
   const _route69 = connection(memClient(), ["*"]);
   const rig = new Rig({
     routes: {
@@ -1295,7 +1305,12 @@ Deno.test("Rig - program can reject by returning error", async () => {
 });
 
 Deno.test("Rig - multi-connection dispatch with programs accepts valid", async () => {
-  const _route79 = connection(memClient(), ["mutable://*", "immutable://*", "hash://*", "local://*"]);
+  const _route79 = connection(memClient(), [
+    "mutable://*",
+    "immutable://*",
+    "hash://*",
+    "local://*",
+  ]);
   const rig = new Rig({
     routes: {
       receive: [
@@ -1320,7 +1335,12 @@ Deno.test("Rig - multi-connection dispatch with programs accepts valid", async (
 });
 
 Deno.test("Rig - multi-connection dispatch with programs rejects via rejecter", async () => {
-  const _route80 = connection(memClient(), ["mutable://*", "immutable://*", "hash://*", "local://*"]);
+  const _route80 = connection(memClient(), [
+    "mutable://*",
+    "immutable://*",
+    "hash://*",
+    "local://*",
+  ]);
   const rig = new Rig({
     routes: {
       receive: [
@@ -2180,7 +2200,7 @@ Deno.test("Rig reaction - does not fire on read", async () => {
 
 // ── Runtime API tests ──
 
-Deno.test("Rig hooks - immutable after init", async () => {
+Deno.test("Rig hooks - immutable after init", () => {
   const _route110 = connection(memClient(), ["*"]);
   const rig = new Rig({
     routes: {
@@ -2282,8 +2302,16 @@ Deno.test("Rig connections - per-op routing uses separate backends", async () =>
   // Write some data to readClient directly
   await readClient.receive([["mutable://open/cached", { from: "cache" }]]);
 
-  const _route114 = connection(writeClient, ["mutable://*", "immutable://*", "hash://*"]);
-  const _route115 = connection(readClient, ["mutable://*", "immutable://*", "hash://*"]);
+  const _route114 = connection(writeClient, [
+    "mutable://*",
+    "immutable://*",
+    "hash://*",
+  ]);
+  const _route115 = connection(readClient, [
+    "mutable://*",
+    "immutable://*",
+    "hash://*",
+  ]);
   const rig = new Rig({
     routes: {
       receive: [_route114],

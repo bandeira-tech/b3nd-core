@@ -46,7 +46,7 @@ export interface ObserveRequest {
   pattern: string;
 }
 
-export interface StatusRequest {}
+export type StatusRequest = Record<string, never>;
 
 export interface StatusResponse {
   status: string;

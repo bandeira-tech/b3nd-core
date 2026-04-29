@@ -63,11 +63,13 @@ Deno.test("TransportServer lifecycle", async () => {
       return {
         transport: "test",
         address: "test://0.0.0.0:0",
-        async start() {
+        start() {
           started = true;
+          return Promise.resolve();
         },
-        async stop() {
+        stop() {
           stopped = true;
+          return Promise.resolve();
         },
       };
     },

@@ -9,7 +9,7 @@
 
 /// <reference lib="deno.ns" />
 
-import { assertEquals } from "jsr:@std/assert";
+import { assertEquals } from "@std/assert";
 import type { Message, ProtocolInterfaceNode } from "../../b3nd-core/types.ts";
 import { pathVector } from "./path-vector.ts";
 import { peer } from "../mod.ts";
