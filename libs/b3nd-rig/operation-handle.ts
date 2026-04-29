@@ -44,6 +44,18 @@ export interface ProcessDoneEvent {
   result: ProgramResult;
 }
 
+/** Emitted when `process()` throws or a program returns an error code. */
+export interface ProcessErrorEvent {
+  /** The input tuple whose classification failed. */
+  input: Output;
+  /** Error message. */
+  error: string;
+  /** Structured error info, when available. */
+  errorDetail?: B3ndError;
+  /** The original thrown value (if `process()` threw). */
+  cause?: unknown;
+}
+
 /** Emitted once `handle()` returns its emissions for one classified tuple. */
 export interface HandleEmitEvent {
   /** The input tuple that was handled. */
@@ -52,6 +64,30 @@ export interface HandleEmitEvent {
   classification: ProgramResult;
   /** What the handler returned — the tuples to dispatch. */
   emissions: Output[];
+}
+
+/** Emitted when `handle()` throws while processing one classified tuple. */
+export interface HandleErrorEvent {
+  /** The input tuple that was handled. */
+  input: Output;
+  /** The classification that was passed to `handle()`. */
+  classification: ProgramResult;
+  /** Error message. */
+  error: string;
+  /** The original thrown value. */
+  cause?: unknown;
+}
+
+/** Emitted when a registered reaction throws while running. */
+export interface ReactionErrorEvent {
+  /** The emission whose URI matched the reaction's pattern. */
+  emission: Output;
+  /** The reaction's URI pattern. */
+  pattern: string;
+  /** Error message. */
+  error: string;
+  /** The original thrown value. */
+  cause?: unknown;
 }
 
 /** Emitted when a single connection accepts a single emission. */
@@ -83,17 +119,23 @@ export interface SettledEvent {
 /** Names of events the OperationHandle fires. */
 export type OperationEventName =
   | "process:done"
+  | "process:error"
   | "handle:emit"
+  | "handle:error"
   | "route:success"
   | "route:error"
+  | "reaction:error"
   | "settled";
 
 /** Map from event name to payload type. */
 export interface OperationEventMap {
   "process:done": ProcessDoneEvent;
+  "process:error": ProcessErrorEvent;
   "handle:emit": HandleEmitEvent;
+  "handle:error": HandleErrorEvent;
   "route:success": RouteSuccessEvent;
   "route:error": RouteErrorEvent;
+  "reaction:error": ReactionErrorEvent;
   "settled": SettledEvent;
 }
 

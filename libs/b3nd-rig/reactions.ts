@@ -84,16 +84,28 @@ export class ReactionRegistry {
 
   /**
    * Find every reaction whose pattern matches `uri`. Returns the list
-   * of `(handler, params)` pairs the caller can invoke.
+   * of `(pattern, handler, params)` triples the caller can invoke.
    */
   matches(
     uri: string,
-  ): { handler: Reaction; params: Record<string, string> }[] {
-    const matches: { handler: Reaction; params: Record<string, string> }[] = [];
+  ): {
+    pattern: string;
+    handler: Reaction;
+    params: Record<string, string>;
+  }[] {
+    const matches: {
+      pattern: string;
+      handler: Reaction;
+      params: Record<string, string>;
+    }[] = [];
     for (const entry of this.entries) {
       const params = matchPattern(entry.segments, uri);
       if (params !== null) {
-        matches.push({ handler: entry.handler, params });
+        matches.push({
+          pattern: entry.pattern,
+          handler: entry.handler,
+          params,
+        });
       }
     }
     return matches;

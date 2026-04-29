@@ -308,8 +308,12 @@ Deno.test("tellAndRead round-trip: A announces hash content, B pulls on demand",
   // B's rig observes A. When A publishes an announcement, B sees the
   // inv://... URI and pulls the hash:// content from A via read().
   const bLocal = mem();
+  const _route125 = connection(bLocal, ["*"]);
   const rigB = new Rig({
-    connections: [connection(bLocal, { receive: ["*"], read: ["*"] })],
+    routes: {
+      receive: [_route125],
+      read: [_route125],
+    },
   });
   const unbind = network(rigB, [peer(storeA, { id: "A" })], [sync.inbound]);
 

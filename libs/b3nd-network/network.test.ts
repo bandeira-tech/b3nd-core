@@ -432,8 +432,12 @@ Deno.test("network() against a real Rig fires reactions on peer-originated write
   const local = mem();
   const reactionCalls: { uri: string; id: string }[] = [];
 
+  const _route123 = connection(local, ["*"]);
   const rig = new Rig({
-    connections: [connection(local, { receive: ["*"], read: ["*"] })],
+    routes: {
+      receive: [_route123],
+      read: [_route123],
+    },
     reactions: {
       // deno-lint-ignore require-await
       "mutable://chat/:id": async (out, _read, params) => {
@@ -456,8 +460,12 @@ Deno.test("network() against a real Rig fires reactions on peer-originated write
 Deno.test("network() persists bridged writes through the rig pipeline", async () => {
   const a = mem();
   const local = mem();
+  const _route124 = connection(local, ["*"]);
   const rig = new Rig({
-    connections: [connection(local, { receive: ["*"], read: ["*"] })],
+    routes: {
+      receive: [_route124],
+      read: [_route124],
+    },
   });
 
   const unbind = network(rig, [peer(a, { id: "A" })]);

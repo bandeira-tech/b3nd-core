@@ -120,7 +120,7 @@ export interface NetworkOptions {
  * connection list unchanged:
  *
  * ```ts
- * connection(flood(peers), { receive: ["*"] })
+ * connection(flood(peers), ["*"])
  * ```
  */
 export type StrategyFactory = (peers: Peer[]) => ProtocolInterfaceNode;

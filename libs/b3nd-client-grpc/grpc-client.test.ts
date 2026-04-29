@@ -11,8 +11,12 @@ let nextPort = 19000 + Math.floor(Math.random() * 1000);
 
 function createTestRig(): Rig {
   const client = new SimpleClient(new MemoryStore());
+  const _route122 = connection(client, ["*"]);
   return new Rig({
-    connections: [connection(client, { receive: ["*"], read: ["*"] })],
+    routes: {
+      receive: [_route122],
+      read: [_route122],
+    },
   });
 }
 

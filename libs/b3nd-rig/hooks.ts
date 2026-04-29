@@ -13,7 +13,7 @@
  * Pure module — no Rig dependency, testable in isolation.
  */
 
-import type { Output } from "../b3nd-core/types.ts";
+import type { B3ndError, Output, ProgramResult } from "../b3nd-core/types.ts";
 
 // ── Per-operation context types ──
 
@@ -63,6 +63,66 @@ export type AfterHook<C> = (
   result: unknown,
 ) => void | Promise<void>;
 
+// ── Error hook ──
+
+/** Where in the pipeline the error occurred. */
+export type ErrorPhase = "process" | "handle" | "route" | "reaction";
+
+/**
+ * Context passed to the `onError` hook.
+ *
+ * Carries enough detail to identify the failing pipeline stage and
+ * the tuple involved. Optional fields are populated per phase:
+ *
+ * - `process` — `input`, `error`, `cause` (when an exception was thrown)
+ * - `handle`  — `input`, `classification`, `error`, `cause`
+ * - `route`   — `input`, `emission`, `connectionId`, `error`, `errorDetail`
+ * - `reaction`— `input`, `emission`, `pattern`, `error`, `cause`
+ */
+export interface ErrorHookCtx {
+  /** Which pipeline stage produced the error. */
+  readonly phase: ErrorPhase;
+  /** The original input tuple driving this slice of work. */
+  readonly input: Output;
+  /** For `route` and `reaction`, the emission being dispatched. */
+  readonly emission?: Output;
+  /** For `route`, the stable ID of the connection that rejected. */
+  readonly connectionId?: string;
+  /** For `handle`, the classification produced by `process()`. */
+  readonly classification?: ProgramResult;
+  /** For `reaction`, the URI pattern that matched. */
+  readonly pattern?: string;
+  /** Human-readable error message. */
+  readonly error: string;
+  /** Structured error info when the underlying client returned one. */
+  readonly errorDetail?: B3ndError;
+  /** The original thrown value, when an exception occurred. */
+  readonly cause?: unknown;
+}
+
+/**
+ * Error hook — called synchronously (in the catch path) for every
+ * error the rig observes during a `send`/`receive` operation.
+ *
+ * **Throw to abort.** A throw propagates up through the operation
+ * handle: `await op` rejects with the thrown value, `await op.settled`
+ * rejects, and any in-flight reactions/routes for the operation stop
+ * being dispatched. (Routes already in flight at the underlying client
+ * cannot be unrun; the rig stops scheduling new ones.)
+ *
+ * **Return** to let the rig keep going with normal error handling: the
+ * affected tuple records `accepted: false`, the corresponding
+ * direction-level `*:error` event fires, and the operation's other
+ * tuples continue.
+ *
+ * Use the hook for fail-fast policies (drop the whole batch on first
+ * program rejection), structured error reporting, or to convert
+ * specific phases into application-level exceptions.
+ */
+export type OnErrorHook = (
+  ctx: Readonly<ErrorHookCtx>,
+) => void | Promise<void>;
+
 // ── Resolved hooks (internal) ──
 
 /** The full set of hooks for all operations. Frozen after init. */
@@ -73,6 +133,7 @@ export interface RigHooks {
   readonly afterReceive: AfterHook<ReceiveCtx> | null;
   readonly beforeRead: BeforeHook<ReadCtx> | null;
   readonly afterRead: AfterHook<ReadCtx> | null;
+  readonly onError: OnErrorHook | null;
 }
 
 /** Config shape for hooks on RigConfig. */
@@ -83,6 +144,8 @@ export interface HooksConfig {
   afterReceive?: AfterHook<ReceiveCtx>;
   beforeRead?: BeforeHook<ReadCtx>;
   afterRead?: AfterHook<ReadCtx>;
+  /** Synchronous error hook — throw to abort the operation. */
+  onError?: OnErrorHook;
 }
 
 // ── Factory ──
@@ -96,7 +159,28 @@ export function resolveHooks(config?: HooksConfig): RigHooks {
     afterReceive: config?.afterReceive ?? null,
     beforeRead: config?.beforeRead ?? null,
     afterRead: config?.afterRead ?? null,
+    onError: config?.onError ?? null,
   });
+}
+
+/**
+ * Run the onError hook with a given context. Returns `true` if the
+ * hook threw — the caller is expected to propagate the throw and
+ * abort the operation. Returns `false` if the hook returned normally
+ * (or there is no hook installed) — the caller proceeds with normal
+ * error handling.
+ *
+ * The hook's own throw is re-thrown by this runner so the call site
+ * sees it. Returning `true` here is just a convenience for call sites
+ * that want to branch.
+ */
+export async function runOnError(
+  hook: OnErrorHook | null,
+  ctx: ErrorHookCtx,
+): Promise<void> {
+  if (!hook) return;
+  // Hook may be sync or return a promise. Await it; throws propagate.
+  await hook(ctx);
 }
 
 // ── Runners ──

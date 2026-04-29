@@ -22,55 +22,35 @@ function memClient() {
 // ── connection() unit tests ──
 
 Deno.test("connection - accepts matching URI", () => {
-  const conn = connection(memClient(), {
-    receive: ["mutable://*"],
-    read: ["mutable://*"],
-  });
-  assertEquals(conn.accepts("receive", "mutable://open/app/x"), true);
-  assertEquals(conn.accepts("read", "mutable://open/app/x"), true);
+  const conn = connection(memClient(), ["mutable://*"]);
+  assertEquals(conn.accepts("mutable://open/app/x"), true);
 });
 
 Deno.test("connection - rejects non-matching URI", () => {
-  const conn = connection(memClient(), {
-    receive: ["mutable://*"],
-  });
-  assertEquals(conn.accepts("receive", "hash://sha256/abc"), false);
-});
-
-Deno.test("connection - rejects unlisted operation", () => {
-  const conn = connection(memClient(), {
-    receive: ["mutable://*"],
-  });
-  // read not listed → not accepted
-  assertEquals(conn.accepts("read", "mutable://open/x"), false);
+  const conn = connection(memClient(), ["mutable://*"]);
+  assertEquals(conn.accepts("hash://sha256/abc"), false);
 });
 
 Deno.test("connection - patterns are serializable", () => {
-  const conn = connection(memClient(), {
-    receive: ["mutable://*", "hash://*"],
-    read: ["mutable://*"],
-  });
+  const conn = connection(memClient(), ["mutable://*", "hash://*"]);
   const wire = JSON.stringify(conn.patterns);
   const parsed = JSON.parse(wire);
-  assertEquals(parsed.receive, ["mutable://*", "hash://*"]);
-  assertEquals(parsed.read, ["mutable://*"]);
+  assertEquals(parsed, ["mutable://*", "hash://*"]);
 });
 
 Deno.test("connection - express-style param patterns", () => {
-  const conn = connection(memClient(), {
-    read: ["mutable://accounts/:id/*"],
-  });
-  assertEquals(conn.accepts("read", "mutable://accounts/alice/profile"), true);
-  assertEquals(conn.accepts("read", "mutable://accounts/bob/settings"), true);
-  assertEquals(conn.accepts("read", "mutable://open/anything"), false);
+  const conn = connection(memClient(), ["mutable://accounts/:id/*"]);
+  assertEquals(conn.accepts("mutable://accounts/alice/profile"), true);
+  assertEquals(conn.accepts("mutable://accounts/bob/settings"), true);
+  assertEquals(conn.accepts("mutable://open/anything"), false);
 });
 
 Deno.test("connection - patterns are frozen", () => {
-  const patterns = { receive: ["mutable://*"] };
+  const patterns = ["mutable://*"];
   const conn = connection(memClient(), patterns);
   // Mutating the original doesn't affect the connection
-  patterns.receive.push("hash://*");
-  assertEquals(conn.patterns.receive, ["mutable://*"]);
+  patterns.push("hash://*");
+  assertEquals([...conn.patterns], ["mutable://*"]);
 });
 
 // ── Rig + connections integration tests ──
@@ -79,11 +59,19 @@ Deno.test("rig routes receive to correct connection", async () => {
   const remote = memClient();
   const local = memClient();
 
+  const _route1 = connection(remote, ["mutable://*"]);
+  const _route2 = connection(local, ["local://*"]);
   const rig = new Rig({
-    connections: [
-      connection(remote, { receive: ["mutable://*"], read: ["mutable://*"] }),
-      connection(local, { receive: ["local://*"], read: ["local://*"] }),
-    ],
+    routes: {
+      receive: [
+        _route1,
+        _route2,
+      ],
+      read: [
+        _route1,
+        _route2,
+      ],
+    },
   });
 
   await rig.receive([["mutable://open/x", { v: 1 }]]);
@@ -109,11 +97,16 @@ Deno.test("rig reads from first matching connection", async () => {
   // Write directly to fallback (simulating pre-existing data)
   await fallback.receive([["mutable://open/old", { from: "fallback" }]]);
 
+  const _route3 = connection(primary, ["mutable://*"]);
+  const _route4 = connection(fallback, ["mutable://*"]);
   const rig = new Rig({
-    connections: [
-      connection(primary, { read: ["mutable://*"], receive: ["mutable://*"] }),
-      connection(fallback, { read: ["mutable://*"] }),
-    ],
+    routes: {
+      receive: [_route3],
+      read: [
+        _route3,
+        _route4,
+      ],
+    },
   });
 
   // Write through rig goes to primary only (fallback has no receive)
@@ -136,11 +129,16 @@ Deno.test("rig broadcasts writes to all matching connections", async () => {
   const primary = memClient();
   const mirror = memClient();
 
+  const _route5 = connection(primary, ["mutable://*"]);
+  const _route6 = connection(mirror, ["mutable://*"]);
   const rig = new Rig({
-    connections: [
-      connection(primary, { receive: ["mutable://*"], read: ["mutable://*"] }),
-      connection(mirror, { receive: ["mutable://*"] }),
-    ],
+    routes: {
+      receive: [
+        _route5,
+        _route6,
+      ],
+      read: [_route5],
+    },
   });
 
   await rig.receive([["mutable://open/x", { v: 1 }]]);
@@ -153,10 +151,11 @@ Deno.test("rig broadcasts writes to all matching connections", async () => {
 });
 
 Deno.test("rig rejects receive for unconnected URI", async () => {
+  const _route7 = connection(memClient(), ["local://*"]);
   const rig = new Rig({
-    connections: [
-      connection(memClient(), { receive: ["local://*"] }),
-    ],
+    routes: {
+      receive: [_route7],
+    },
   });
 
   const [result] = await rig.receive([["mutable://open/x", { v: 1 }]]);
@@ -164,10 +163,11 @@ Deno.test("rig rejects receive for unconnected URI", async () => {
 });
 
 Deno.test("rig rejects read for unconnected URI", async () => {
+  const _route8 = connection(memClient(), ["local://*"]);
   const rig = new Rig({
-    connections: [
-      connection(memClient(), { read: ["local://*"] }),
-    ],
+    routes: {
+      read: [_route8],
+    },
   });
 
   const results = await rig.read("mutable://open/x");
@@ -179,10 +179,11 @@ Deno.test("best-effort: local connection enforces even if client accepts everyth
   // Memory backend accepts anything — no internal filtering
   const client = memClient();
 
+  const _route9 = connection(client, ["mutable://*"]);
   const rig = new Rig({
-    connections: [
-      connection(client, { receive: ["mutable://*"] }),
-    ],
+    routes: {
+      receive: [_route9],
+    },
   });
 
   // hash:// not in connection → rejected by rig, even though client would accept it
@@ -207,13 +208,12 @@ Deno.test("programs and connections are separate concerns", async () => {
     return Promise.resolve({ code: "ok" });
   };
 
+  const _route10 = connection(client, ["mutable://*"]);
   const rig = new Rig({
-    connections: [
-      connection(client, {
-        receive: ["mutable://*"],
-        read: ["mutable://*"],
-      }),
-    ],
+    routes: {
+      receive: [_route10],
+      read: [_route10],
+    },
     programs: { "mutable://open": validate },
   });
 
@@ -239,8 +239,11 @@ Deno.test("program runs after connection routing", async () => {
     return Promise.resolve({ code: "ok" });
   };
 
+  const _route11 = connection(client, ["mutable://*"]);
   const rig = new Rig({
-    connections: [connection(client, { receive: ["mutable://*"] })],
+    routes: {
+      receive: [_route11],
+    },
     programs: { "mutable://open": record },
   });
 
@@ -255,10 +258,12 @@ Deno.test("program runs after connection routing", async () => {
 });
 
 Deno.test("single client via catch-all connection", async () => {
+  const _route12 = connection(memClient(), ["*"]);
   const rig = new Rig({
-    connections: [
-      connection(memClient(), { receive: ["*"], read: ["*"] }),
-    ],
+    routes: {
+      receive: [_route12],
+      read: [_route12],
+    },
   });
 
   // Everything accepted — no filtering
@@ -269,10 +274,12 @@ Deno.test("single client via catch-all connection", async () => {
 });
 
 Deno.test("single client via explicit connection still works (catch-all)", async () => {
+  const _route13 = connection(memClient(), ["*"]);
   const rig = new Rig({
-    connections: [
-      connection(memClient(), { receive: ["*"], read: ["*"] }),
-    ],
+    routes: {
+      receive: [_route13],
+      read: [_route13],
+    },
   });
 
   const [r] = await rig.receive([["mutable://open/x", { v: 1 }]]);
@@ -289,11 +296,19 @@ Deno.test("status().schema unions all connection client schemas", async () => {
   await a.receive([["mutable://open/x", "data"]]);
   await b.receive([["local://app/y", "data"]]);
 
+  const _route14 = connection(a, ["mutable://*"]);
+  const _route15 = connection(b, ["local://*"]);
   const rig = new Rig({
-    connections: [
-      connection(a, { receive: ["mutable://*"], read: ["mutable://*"] }),
-      connection(b, { receive: ["local://*"], read: ["local://*"] }),
-    ],
+    routes: {
+      receive: [
+        _route14,
+        _route15,
+      ],
+      read: [
+        _route14,
+        _route15,
+      ],
+    },
   });
 
   const status = await rig.status();
@@ -301,11 +316,15 @@ Deno.test("status().schema unions all connection client schemas", async () => {
 });
 
 Deno.test("status aggregates across all connection clients", async () => {
+  const _route16 = connection(memClient(), ["mutable://*"]);
+  const _route17 = connection(memClient(), ["local://*"]);
   const rig = new Rig({
-    connections: [
-      connection(memClient(), { receive: ["mutable://*"] }),
-      connection(memClient(), { receive: ["local://*"] }),
-    ],
+    routes: {
+      receive: [
+        _route16,
+        _route17,
+      ],
+    },
   });
 
   const status = await rig.status();
@@ -315,13 +334,12 @@ Deno.test("status aggregates across all connection clients", async () => {
 Deno.test("list via trailing-slash read routes through connection", async () => {
   const client = memClient();
 
+  const _route18 = connection(client, ["mutable://*"]);
   const rig = new Rig({
-    connections: [
-      connection(client, {
-        receive: ["mutable://*"],
-        read: ["mutable://*"],
-      }),
-    ],
+    routes: {
+      receive: [_route18],
+      read: [_route18],
+    },
   });
 
   await rig.receive([["mutable://open/a", "one"]]);

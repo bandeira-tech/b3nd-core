@@ -1,79 +1,71 @@
 /**
  * @module
- * Connection — the single filtering primitive for b3nd.
+ * Connection — a client bound to a URI pattern list.
  *
- * A connection wraps a client with URI patterns that describe what
- * this gateway accepts. The rig routes operations based on connections.
+ * A `Connection` wraps a `ProtocolInterfaceNode` with a set of URI
+ * filter patterns. Connections are bound into the rig's `routes`
+ * config (`receive`, `read`, `observe`) — each route gets its own
+ * ordered list of connections.
  *
- * The same connection descriptor is:
- * - Used locally by the rig for routing decisions
- * - Serializable for publishing over the wire (WS, HTTP, etc.)
- * - Enforced locally regardless of whether the remote honors it
+ * The same connection value can be referenced from multiple routes
+ * (when one client serves writes, reads, and observes with the same
+ * filter); a different filter for a different op means a separate
+ * `connection(...)` call.
  *
  * Pattern syntax (same as observe):
  * - `:param` matches a single segment
  * - `*` matches one or more remaining segments
  * - Literal segments must match exactly
  *
- * @example
+ * @example A single client serving all three ops
  * ```ts
- * import { connection } from "./connection.ts";
+ * import { connection, Rig } from "@bandeira-tech/b3nd-sdk";
  *
- * // Full b3nd node
- * const node = connection(httpClient, {
- *   receive: ["mutable://*", "immutable://*", "hash://*"],
- *   read:    ["mutable://*", "immutable://*", "hash://*"],
- *   observe: ["mutable://*"],
- * });
+ * const node = connection(httpClient, ["mutable://*", "hash://*"]);
  *
- * // List reads piggyback on `read` — a trailing-slash URI is
- * // matched against `read` patterns with the slash stripped.
- *
- * // Write-only mirror
- * const mirror = connection(pgClient, {
- *   receive: ["mutable://*", "hash://*"],
- * });
- *
- * // Read-only cache
- * const cache = connection(redisClient, {
- *   read: ["mutable://accounts/*", "hash://sha256/*"],
- * });
- *
- * // Rig routes to the right connections automatically
  * const rig = new Rig({
- *   connections: [node, mirror, cache],
- *   schema: mySchema,
+ *   routes: {
+ *     receive: [node],
+ *     read:    [node],
+ *     observe: [node],
+ *   },
+ * });
+ * ```
+ *
+ * @example Asymmetric topology — write-mirror, read-cache, narrow observe
+ * ```ts
+ * const primary = connection(httpClient,  ["mutable://*", "hash://*"], { id: "primary" });
+ * const mirror  = connection(pgClient,    ["mutable://*", "hash://*"], { id: "mirror"  });
+ * const cache   = connection(redisClient, ["mutable://accounts/*"],     { id: "cache"   });
+ * const obsNarrow = connection(httpClient, ["mutable://*"],             { id: "primary-obs" });
+ *
+ * const rig = new Rig({
+ *   routes: {
+ *     receive: [primary, mirror], // broadcast both
+ *     read:    [cache, primary],  // try cache first, then primary
+ *     observe: [obsNarrow],       // narrow namespace, primary only
+ *   },
  * });
  * ```
  */
 
-import type {
-  ClientOperation,
-  ProtocolInterfaceNode,
-} from "../b3nd-core/types.ts";
+import type { ProtocolInterfaceNode } from "../b3nd-core/types.ts";
 import { matchPattern } from "./reactions.ts";
 
 // ── Types ──
-
-/** Per-operation URI patterns. Only listed operations are routed. */
-export interface ConnectionPatterns {
-  receive?: string[];
-  read?: string[];
-  observe?: string[];
-}
 
 /** Optional configuration for a connection. */
 export interface ConnectionOptions {
   /**
    * Stable identifier for this connection. Surfaces in
-   * `route:success`/`route:error` events and lets operators tell
-   * replicas apart in observability data. Auto-generated as
-   * `conn-{N}` (registration order) when omitted.
+   * `route:success`/`route:error` events on the operation handle and
+   * lets operators tell replicas apart in observability data.
+   * Auto-generated as `conn-{N}` (registration order) when omitted.
    */
   id?: string;
 }
 
-/** A connection: a client wrapped with routing patterns. */
+/** A connection: a client wrapped with a URI pattern list. */
 export interface Connection {
   /** Stable identifier (provided or auto-generated). */
   readonly id: string;
@@ -85,14 +77,10 @@ export interface Connection {
    * The raw patterns — serializable for wire protocols.
    * Send this to a remote node so it knows what to push.
    */
-  readonly patterns: Readonly<{
-    receive?: readonly string[];
-    read?: readonly string[];
-    observe?: readonly string[];
-  }>;
+  readonly patterns: readonly string[];
 
-  /** Check if this connection accepts an operation on a URI. */
-  accepts(operation: ClientOperation, uri: string): boolean;
+  /** Check if this connection's pattern list accepts a URI. */
+  accepts(uri: string): boolean;
 }
 
 // ── Internals ──
@@ -115,43 +103,27 @@ function matchesAny(compiled: CompiledPattern[], uri: string): boolean {
 
 // ── connection ──
 
-/**
- * Wrap a client with routing patterns to create a connection.
- *
- * The connection is the gateway control — the rig uses it for routing,
- * and the patterns can be published over the wire for remote filtering.
- *
- * Local enforcement is always applied. Remote enforcement is best-effort:
- * the remote node may or may not honor the patterns, but the local rig
- * always filters based on them.
- */
 /** Module-level counter for auto-generated connection IDs. */
 let _autoIdCounter = 0;
 
+/**
+ * Wrap a client with a URI pattern list to create a connection.
+ *
+ * The connection is the gateway control — the rig uses it for
+ * routing within the route arrays it appears in, and the patterns
+ * can be published over the wire for remote filtering.
+ *
+ * Local enforcement is always applied. Remote enforcement is
+ * best-effort: the remote node may or may not honor the patterns,
+ * but the local rig always filters based on them.
+ */
 export function connection(
   client: ProtocolInterfaceNode,
-  patterns: ConnectionPatterns,
+  patterns: string[],
   options?: ConnectionOptions,
 ): Connection {
-  // Pre-compile patterns for fast matching
-  const compiled: Partial<Record<ClientOperation, CompiledPattern[]>> = {};
-  for (const op of ["receive", "read", "observe"] as const) {
-    if (patterns[op]) {
-      compiled[op] = compilePatterns(patterns[op]!);
-    }
-  }
-
-  // Deep-copy and freeze patterns so they're safe to serialize
-  const frozenPatterns = Object.freeze({
-    ...(patterns.receive
-      ? { receive: Object.freeze([...patterns.receive]) }
-      : {}),
-    ...(patterns.read ? { read: Object.freeze([...patterns.read]) } : {}),
-    ...(patterns.observe
-      ? { observe: Object.freeze([...patterns.observe]) }
-      : {}),
-  });
-
+  const compiled = compilePatterns(patterns);
+  const frozenPatterns = Object.freeze([...patterns]) as readonly string[];
   const id = options?.id ?? `conn-${_autoIdCounter++}`;
 
   return {
@@ -159,10 +131,8 @@ export function connection(
     client,
     patterns: frozenPatterns,
 
-    accepts(operation: ClientOperation, uri: string): boolean {
-      const opPatterns = compiled[operation];
-      if (!opPatterns) return false;
-      return matchesAny(opPatterns, uri);
+    accepts(uri: string): boolean {
+      return matchesAny(compiled, uri);
     },
   };
 }

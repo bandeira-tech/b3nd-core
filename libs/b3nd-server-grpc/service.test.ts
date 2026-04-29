@@ -7,8 +7,12 @@ import { createGrpcHandler } from "./service.ts";
 
 function createTestRig(): Rig {
   const client = new SimpleClient(new MemoryStore());
+  const _route121 = connection(client, ["*"]);
   return new Rig({
-    connections: [connection(client, { receive: ["*"], read: ["*"] })],
+    routes: {
+      receive: [_route121],
+      read: [_route121],
+    },
   });
 }
 

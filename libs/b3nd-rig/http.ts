@@ -18,7 +18,8 @@
  * import { Rig, connection } from "@b3nd/rig";
  * import { httpApi } from "@b3nd/rig/http";
  *
- * const rig = new Rig({ connections: [connection(client, { receive: ["*"], read: ["*"] })] });
+ * const c = connection(client, ["*"]);
+ * const rig = new Rig({ routes: { receive: [c], read: [c], observe: [c] } });
  * Deno.serve({ port: 3000 }, httpApi(rig));
  * ```
  *
@@ -135,7 +136,8 @@ function json(data: unknown, status = 200): Response {
  * import { Rig, connection } from "@b3nd/rig";
  * import { httpApi } from "@b3nd/rig/http";
  *
- * const rig = new Rig({ connections: [connection(client, { receive: ["*"], read: ["*"] })] });
+ * const c = connection(client, ["*"]);
+ * const rig = new Rig({ routes: { receive: [c], read: [c], observe: [c] } });
  * const api = httpApi(rig);
  * Deno.serve({ port: 3000 }, api);
  * ```

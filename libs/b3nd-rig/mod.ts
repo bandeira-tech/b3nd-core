@@ -33,11 +33,14 @@ export type { ExportedIdentity } from "./identity.ts";
 export { Rig } from "./rig.ts";
 export type {
   HandleEmitEvent,
+  HandleErrorEvent,
   OperationEventHandler,
   OperationEventMap,
   OperationEventName,
   OperationHandle,
   ProcessDoneEvent,
+  ProcessErrorEvent,
+  ReactionErrorEvent,
   RouteErrorEvent,
   RouteSuccessEvent,
   SettledEvent,
@@ -69,13 +72,21 @@ export { DataStoreClient } from "../b3nd-core/data-store-client.ts";
 export type {
   AfterHook,
   BeforeHook,
+  ErrorHookCtx,
+  ErrorPhase,
   HooksConfig,
+  OnErrorHook,
   ReadCtx,
   ReceiveCtx,
   RigHooks,
   SendCtx,
 } from "./hooks.ts";
-export { resolveHooks, runAfter, runBefore } from "./hooks.ts";
+export {
+  resolveHooks,
+  runAfter,
+  runBefore,
+  runOnError,
+} from "./hooks.ts";
 
 // Events
 export type { EventHandler, RigEvent, RigEventName } from "./events.ts";
@@ -87,7 +98,8 @@ export { matchPattern, ReactionRegistry } from "./reactions.ts";
 
 // Connections — the single filtering primitive
 export { connection } from "./connection.ts";
-export type { Connection, ConnectionPatterns } from "./connection.ts";
+export type { Connection, ConnectionOptions } from "./connection.ts";
+export type { RigRoutes } from "./types.ts";
 
 // HTTP API — standalone function for serving a rig over HTTP
 export { httpApi } from "./http.ts";

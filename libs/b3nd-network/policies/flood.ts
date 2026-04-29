@@ -14,13 +14,12 @@
  * import { flood, peer } from "@bandeira-tech/b3nd-sdk/network";
  * import { Rig, connection, HttpClient } from "@bandeira-tech/b3nd-sdk";
  *
+ * const peers = connection(
+ *   flood([peer(new HttpClient({ url: "https://node-b" }))]),
+ *   ["*"],
+ * );
  * const rig = new Rig({
- *   connections: [
- *     connection(
- *       flood([peer(new HttpClient({ url: "https://node-b" }))]),
- *       { receive: ["*"], read: ["*"], observe: ["*"] },
- *     ),
- *   ],
+ *   routes: { receive: [peers], read: [peers], observe: [peers] },
  * });
  * ```
  *

@@ -13,36 +13,60 @@ import type { EventHandler, RigEventName } from "./events.ts";
 import type { ReactionHandler } from "./reactions.ts";
 import type { Connection } from "./connection.ts";
 
+// Re-export so app-specific libs can pull `ProtocolInterfaceNode`
+// from the rig module — keeps the import surface uniform.
+export type { ProtocolInterfaceNode };
+
+/**
+ * Per-operation route bindings.
+ *
+ * Each route is an ordered list of connections. The rig treats the
+ * three routes independently:
+ *
+ * - `receive` — broadcast: a tuple lands at every connection whose
+ *   pattern accepts its URI. Per-route outcomes surface as
+ *   `route:success` / `route:error` on the operation handle.
+ * - `read` — first match wins for point reads (one URI, one
+ *   answer); list reads (trailing-slash URIs) gather across all
+ *   matching connections.
+ * - `observe` — first match wins; the chosen connection's client
+ *   handles the underlying transport.
+ *
+ * The same connection value can appear in multiple routes when one
+ * client serves all three with the same filter. A different filter
+ * for a different op means a separate `connection(...)` call.
+ */
+export interface RigRoutes {
+  receive?: Connection[];
+  read?: Connection[];
+  observe?: Connection[];
+}
+
 /**
  * Configuration for `new Rig()`.
  *
- * The rig is pure orchestration — build clients outside, hand them in
- * as connections. Connections are the only way to wire clients.
+ * The rig is pure orchestration — build clients outside, hand them
+ * in via `routes`. Routes are the only way the rig learns about
+ * clients.
  */
 export interface RigConfig {
   /**
-   * Connections — the single filtering primitive.
+   * Routes — per-op connection lists.
    *
-   * Each connection wraps a client with URI patterns that control routing.
-   * Writes broadcast to all matching connections; reads try first match.
-   * The same patterns can be published over the wire for remote filtering.
-   *
+   * @example
    * ```typescript
+   * const node = connection(httpClient, ["mutable://*", "hash://*"]);
+   *
    * const rig = new Rig({
-   *   connections: [
-   *     connection(httpClient, {
-   *       receive: ["mutable://*", "hash://*"],
-   *       read: ["mutable://*", "hash://*"],
-   *     }),
-   *     connection(memoryClient, {
-   *       receive: ["local://*"],
-   *       read: ["local://*"],
-   *     }),
-   *   ],
+   *   routes: {
+   *     receive: [node],
+   *     read:    [node],
+   *     observe: [node],
+   *   },
    * });
    * ```
    */
-  connections: Connection[];
+  routes: RigRoutes;
 
   /**
    * Programs — pure classifiers that return protocol-defined codes.
@@ -53,7 +77,7 @@ export interface RigConfig {
    *
    * ```typescript
    * const rig = new Rig({
-   *   connections: [...],
+   *   routes: { ... },
    *   programs: {
    *     "store://balance": balanceProgram,
    *     "msg://app": appMsgProgram,
@@ -73,8 +97,10 @@ export interface RigConfig {
   /**
    * Code handlers — what to do when a program returns a specific code.
    *
-   * Each handler gets `(message, broadcast, read)` where `broadcast` goes
-   * direct to clients (bypasses programs). The handler decides what to store.
+   * Each handler returns `Output[]` — the tuples it wants the rig
+   * to dispatch through `routes.receive`. Handler emissions skip
+   * `process` (handlers are canonical interpreters); reactions run
+   * after broadcast lands.
    */
   handlers?: Record<string, CodeHandler>;
 
@@ -87,7 +113,7 @@ export interface RigConfig {
    * @example
    * ```typescript
    * const rig = new Rig({
-   *   connections: [...],
+   *   routes: { ... },
    *   hooks: {
    *     beforeReceive: (ctx) => { validate(ctx.uri); },
    *     afterRead: (ctx, result) => { audit(ctx.uri, result); },
@@ -106,7 +132,7 @@ export interface RigConfig {
    * @example
    * ```typescript
    * const rig = new Rig({
-   *   connections: [...],
+   *   routes: { ... },
    *   on: {
    *     "send:success": [audit, notifyPeers],
    *     "*:error": [alertOps],
@@ -125,7 +151,7 @@ export interface RigConfig {
    * @example
    * ```typescript
    * const rig = new Rig({
-   *   connections: [...],
+   *   routes: { ... },
    *   reactions: {
    *     "mutable://app/users/:id": async (out, _read, { id }) => {
    *       return [[`notify://email/${id}`, { kind: "user-updated" }]];
@@ -165,6 +191,7 @@ export interface WatchOptions {
 /**
  * Options for rig.watchAll() — reactive collection watching.
  */
+// deno-lint-ignore no-empty-interface
 export interface WatchAllOptions extends WatchOptions {
 }
 

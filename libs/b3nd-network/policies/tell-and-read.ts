@@ -51,11 +51,14 @@
  *   },
  * });
  *
+ * const local = connection(localStore, ["*"]);
+ * const outbound = connection(sync.outbound(peers), ["hash://*"]);
  * const rig = new Rig({
- *   connections: [
- *     connection(localStore, { receive: ["*"], read: ["*"] }),
- *     connection(sync.outbound(peers), { receive: ["hash://*"] }),
- *   ],
+ *   routes: {
+ *     receive: [local, outbound],
+ *     read:    [local],
+ *     observe: [local],
+ *   },
  * });
  * const unbind = network(rig, peers, [sync.inbound]);
  * ```

@@ -78,6 +78,7 @@ export { Rig } from "../libs/b3nd-rig/rig.ts";
 export type {
   RigConfig,
   RigInfo,
+  RigRoutes,
   WatchAllOptions,
   WatchAllSnapshot,
   WatchOptions,
@@ -86,11 +87,14 @@ export type {
 // OperationHandle
 export type {
   HandleEmitEvent,
+  HandleErrorEvent,
   OperationEventHandler,
   OperationEventMap,
   OperationEventName,
   OperationHandle,
   ProcessDoneEvent,
+  ProcessErrorEvent,
+  ReactionErrorEvent,
   RouteErrorEvent,
   RouteSuccessEvent,
   SettledEvent,
@@ -100,13 +104,21 @@ export type {
 export type {
   AfterHook,
   BeforeHook,
+  ErrorHookCtx,
+  ErrorPhase,
   HooksConfig,
+  OnErrorHook,
   ReadCtx,
   ReceiveCtx,
   RigHooks,
   SendCtx,
 } from "../libs/b3nd-rig/hooks.ts";
-export { resolveHooks, runAfter, runBefore } from "../libs/b3nd-rig/hooks.ts";
+export {
+  resolveHooks,
+  runAfter,
+  runBefore,
+  runOnError,
+} from "../libs/b3nd-rig/hooks.ts";
 
 // Events
 export type {
@@ -124,7 +136,7 @@ export { matchPattern, ReactionRegistry } from "../libs/b3nd-rig/reactions.ts";
 export { connection } from "../libs/b3nd-rig/connection.ts";
 export type {
   Connection,
-  ConnectionPatterns,
+  ConnectionOptions,
 } from "../libs/b3nd-rig/connection.ts";
 
 // HTTP API

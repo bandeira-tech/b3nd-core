@@ -12,6 +12,7 @@
   },
   "nodeModulesDir": "auto",
   "imports": {
+    "@bandeira-tech/b3nd-canon/msg": "../b3nd-canon/src/msg.ts",
     "@std/assert": "jsr:@std/assert@^1.0.15",
     "@std/encoding": "jsr:@std/encoding@^1.0.10",
     "canonicalize": "npm:canonicalize@2.0.0"
