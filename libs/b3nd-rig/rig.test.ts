@@ -1,17 +1,12 @@
-import { assertEquals, assertNotEquals, assertRejects } from "@std/assert";
+import { assertEquals, assertRejects } from "@std/assert";
 import { Identity } from "./identity.ts";
 import { getSupportedProtocols } from "./backend-factory.ts";
 import type { BackendResolver } from "./backend-factory.ts";
 import { Rig } from "./rig.ts";
 import { createTestPrograms } from "../b3nd-client-memory/mod.ts";
-import type { Output, Program } from "../b3nd-core/types.ts";
+import type { Program } from "../b3nd-core/types.ts";
 import { MemoryStore } from "../b3nd-client-memory/store.ts";
 import { DataStoreClient } from "../b3nd-core/data-store-client.ts";
-import {
-  message,
-  messageDataHandler,
-  messageDataProgram,
-} from "@bandeira-tech/b3nd-canon/msg";
 import { connection } from "./connection.ts";
 
 /** Shorthand: null-aware Store adapter backed by an in-memory store. */
@@ -19,73 +14,8 @@ function memClient() {
   return new DataStoreClient(new MemoryStore());
 }
 
-/**
- * Canon for tests that exercise signed send / encrypted send /
- * sendMany — the canonical MessageData program + handler that decompose
- * envelope tuples into their constituent emissions. Without this
- * installed, envelopes land at the hash URI but inner outputs do not
- * get persisted.
- */
-const messageDataCanon = {
-  programs: { "hash://sha256": messageDataProgram },
-  handlers: { "msgdata:valid": messageDataHandler },
-};
 import type { EncryptedPayload } from "../b3nd-encrypt/mod.ts";
 import { httpApi } from "./http.ts";
-
-/**
- * Helper: sign + message + rig.send.
- *
- * Sends just the envelope — when `messageDataHandler` is registered
- * (see `messageDataCanon` above), the rig dispatches the constituent
- * emissions (envelope + outputs + null-payload deletions for inputs)
- * via the handler. Sending `[envelope, ...outputs]` instead would
- * dispatch each output twice — once via the handler's decomposition
- * and once via default-dispatch on the direct input.
- */
-async function signAndSend<V = unknown>(
-  identity: Identity,
-  rig: Rig,
-  data: { inputs: string[]; outputs: Output<V>[] },
-): Promise<{ accepted: boolean; uri: string; error?: string }> {
-  const auth = [
-    await identity.sign({ inputs: data.inputs, outputs: data.outputs }),
-  ];
-  const envelope = await message({
-    auth,
-    inputs: data.inputs,
-    outputs: data.outputs as Output[],
-  });
-  const results = await rig.send([envelope]);
-  return { ...results[0], uri: envelope[0] };
-}
-
-/**
- * Helper: sign + encrypt + message + rig.send.
- * Replaces the old AuthenticatedRig.sendEncrypted() pattern in tests.
- */
-async function signEncryptAndSend<V = unknown>(
-  identity: Identity,
-  rig: Rig,
-  data: { inputs: string[]; outputs: Output<V>[] },
-  recipientEncPubkeyHex?: string,
-): Promise<{ accepted: boolean; uri: string; error?: string }> {
-  if (!identity.canEncrypt) {
-    throw new Error("signEncryptAndSend: identity has no encryption keys.");
-  }
-  const recipient = recipientEncPubkeyHex || identity.encryptionPubkey;
-  const encryptedOutputs: Output[] = await Promise.all(
-    data.outputs.map(async ([uri, value]) => {
-      const plaintext = new TextEncoder().encode(JSON.stringify(value));
-      const encrypted = await identity.encrypt(plaintext, recipient);
-      return [uri, encrypted] as Output;
-    }),
-  );
-  return signAndSend(identity, rig, {
-    inputs: data.inputs,
-    outputs: encryptedOutputs,
-  });
-}
 
 /**
  * Helper: read encrypted data and decrypt it.
@@ -561,61 +491,6 @@ Deno.test("Rig.receive - receives a message", async () => {
   assertEquals(read.record?.data, { hello: "world" });
 });
 
-Deno.test("signAndSend - signs and sends via identity + rig", async () => {
-  const id = await Identity.generate();
-  const _route34 = connection(memClient(), ["*"]);
-  const rig = new Rig({
-    ...messageDataCanon,
-    routes: {
-      receive: [_route34],
-      read: [_route34],
-    },
-  });
-
-  const result = await signAndSend(id, rig, {
-    inputs: [],
-    outputs: [["mutable://open/item", { value: 42 }]],
-  });
-  assertEquals(result.accepted, true);
-  assertEquals(result.uri.startsWith("hash://sha256/"), true);
-
-  // The output should be readable at its own URI
-  const reads = await rig.read("mutable://open/item");
-  const read = reads[0];
-  assertEquals(read.success, true);
-  assertEquals(read.record?.data, { value: 42 });
-});
-
-Deno.test("signAndSend - multiple identities on same rig", async () => {
-  const alice = await Identity.generate();
-  const bob = await Identity.generate();
-  const _route35 = connection(memClient(), ["*"]);
-  const rig = new Rig({
-    ...messageDataCanon,
-    routes: {
-      receive: [_route35],
-      read: [_route35],
-    },
-  });
-
-  assertEquals(alice.pubkey !== bob.pubkey, true);
-
-  // Both can write through the same rig
-  await signAndSend(alice, rig, {
-    inputs: [],
-    outputs: [["mutable://open/alice-data", { from: "alice" }]],
-  });
-  await signAndSend(bob, rig, {
-    inputs: [],
-    outputs: [["mutable://open/bob-data", { from: "bob" }]],
-  });
-
-  assertEquals(await rig.readData("mutable://open/alice-data"), {
-    from: "alice",
-  });
-  assertEquals(await rig.readData("mutable://open/bob-data"), { from: "bob" });
-});
-
 Deno.test("Rig.read - trailing-slash lists items", async () => {
   const _route36 = connection(memClient(), ["*"]);
   const rig = new Rig({
@@ -711,24 +586,6 @@ Deno.test("Rig -quick connect to memory backend", async () => {
   });
   const health = await rig.status();
   assertEquals(health.status, "healthy");
-});
-
-Deno.test("Rig - signAndSend round-trip", async () => {
-  const id = await Identity.generate();
-  const _route43 = connection(memClient(), ["*"]);
-  const rig = new Rig({
-    ...messageDataCanon,
-    routes: {
-      receive: [_route43],
-      read: [_route43],
-    },
-  });
-
-  const result = await signAndSend(id, rig, {
-    inputs: [],
-    outputs: [["mutable://open/connect-test", { v: 1 }]],
-  });
-  assertEquals(result.accepted, true);
 });
 
 Deno.test("Rig -receive and read round-trip", async () => {
@@ -942,105 +799,6 @@ Deno.test("Rig.readOrThrow - throws for missing URI", async () => {
 
 // rig.delete() no longer exists — Rig.readOrThrow after delete test removed
 
-// ── Rig.send integration tests (with Identity and signature verification) ──
-
-Deno.test("signAndSend - creates verifiable signed envelope", async () => {
-  const id = await Identity.generate();
-  const _route54 = connection(memClient(), ["*"]);
-  const rig = new Rig({
-    ...messageDataCanon,
-    routes: {
-      receive: [_route54],
-      read: [_route54],
-    },
-  });
-
-  const result = await signAndSend(id, rig, {
-    inputs: [],
-    outputs: [["mutable://open/signed-test", { msg: "hello" }]],
-  });
-
-  assertEquals(result.accepted, true);
-  assertEquals(typeof result.uri, "string");
-  assertEquals(result.uri.startsWith("hash://sha256/"), true);
-
-  // Read back the envelope
-  const envelope = await rig.readOrThrow<{
-    auth: Array<{ pubkey: string; signature: string }>;
-    inputs: string[];
-    outputs: Array<[string, unknown]>;
-    hash: string;
-  }>(result.uri);
-
-  // Verify structure
-  assertEquals(Array.isArray(envelope.auth), true);
-  assertEquals(envelope.auth.length, 1);
-  assertEquals(envelope.auth[0].pubkey, id.pubkey);
-  assertEquals(typeof envelope.auth[0].signature, "string");
-  assertEquals(envelope.outputs[0][0], "mutable://open/signed-test");
-  assertEquals(envelope.outputs[0][1], { msg: "hello" });
-
-  // Verify the signature is valid using the identity
-  const valid = await id.verify(
-    { inputs: envelope.inputs, outputs: envelope.outputs },
-    envelope.auth[0].signature,
-  );
-  assertEquals(valid, true);
-
-  // Also verify the mutable output was written
-  const data = await rig.readData("mutable://open/signed-test");
-  assertEquals(data, { msg: "hello" });
-});
-
-Deno.test("signAndSend - different identities produce different signatures", async () => {
-  const alice = await Identity.generate();
-  const bob = await Identity.generate();
-  const _route55 = connection(memClient(), ["*"]);
-  const rig = new Rig({
-    ...messageDataCanon,
-    routes: {
-      receive: [_route55],
-      read: [_route55],
-    },
-  });
-
-  const r1 = await signAndSend(alice, rig, {
-    inputs: [],
-    outputs: [["mutable://open/alice-write", 1]],
-  });
-
-  const r2 = await signAndSend(bob, rig, {
-    inputs: [],
-    outputs: [["mutable://open/bob-write", 2]],
-  });
-
-  // Both succeed
-  assertEquals(r1.accepted, true);
-  assertEquals(r2.accepted, true);
-
-  // Different envelopes with different signers
-  const e1 = await rig.readOrThrow<{
-    auth: Array<{ pubkey: string; signature: string }>;
-    inputs: string[];
-    outputs: Array<[string, unknown]>;
-  }>(r1.uri);
-  const e2 = await rig.readOrThrow<{
-    auth: Array<{ pubkey: string; signature: string }>;
-    inputs: string[];
-    outputs: Array<[string, unknown]>;
-  }>(r2.uri);
-
-  assertEquals(e1.auth[0].pubkey, alice.pubkey);
-  assertEquals(e2.auth[0].pubkey, bob.pubkey);
-
-  // Alice's signature should not verify with Bob's key and vice versa
-  const crossCheck = await bob.verify({
-    inputs: e1.inputs,
-    outputs: e1.outputs,
-  }, e1.auth[0].signature);
-  assertEquals(crossCheck, false);
-});
-
 Deno.test("Rig.read - multi-URI returns data for each", async () => {
   const _route56 = connection(memClient(), ["*"]);
   const rig = new Rig({
@@ -1110,40 +868,6 @@ Deno.test("Rig.read - multi-URI all missing returns all failures", async () => {
     "mutable://open/gone/b",
   ]);
   assertEquals(results.filter((r) => r.success).length, 0);
-});
-
-Deno.test("signAndSend - multiple outputs in single envelope", async () => {
-  const id = await Identity.generate();
-  const _route60 = connection(memClient(), ["*"]);
-  const rig = new Rig({
-    ...messageDataCanon,
-    routes: {
-      receive: [_route60],
-      read: [_route60],
-    },
-  });
-
-  const result = await signAndSend(id, rig, {
-    inputs: [],
-    outputs: [
-      ["mutable://open/batch/a", { v: 1 }],
-      ["mutable://open/batch/b", { v: 2 }],
-      ["mutable://open/batch/c", { v: 3 }],
-    ],
-  });
-
-  assertEquals(result.accepted, true);
-
-  // All outputs should be written
-  assertEquals(await rig.readData("mutable://open/batch/a"), { v: 1 });
-  assertEquals(await rig.readData("mutable://open/batch/b"), { v: 2 });
-  assertEquals(await rig.readData("mutable://open/batch/c"), { v: 3 });
-
-  // The envelope at the hash URI should have all 3 outputs
-  const envelope = await rig.readOrThrow<{
-    outputs: Array<[string, unknown]>;
-  }>(result.uri);
-  assertEquals(envelope.outputs.length, 3);
 });
 
 // ── Rig.deleteMany tests ──
@@ -1618,34 +1342,6 @@ Deno.test("Rig - multi-connection dispatch with programs rejects via rejecter", 
   assertEquals(result.accepted, false);
 });
 
-Deno.test("Rig - programs allow signed send via signAndSend", async () => {
-  const id = await Identity.generate();
-  const _route81 = connection(memClient(), ["*"]);
-  const rig = new Rig({
-    routes: {
-      receive: [_route81],
-      read: [_route81],
-    },
-    // messageDataCanon last so its `hash://sha256: messageDataProgram`
-    // wins — without it the envelope wouldn't decompose and the inner
-    // output wouldn't land.
-    programs: {
-      ...createTestPrograms(),
-      ...messageDataCanon.programs,
-    },
-    handlers: { ...messageDataCanon.handlers },
-  });
-
-  const result = await signAndSend(id, rig, {
-    inputs: [],
-    outputs: [["mutable://accounts/test", { name: "Alice" }]],
-  });
-  assertEquals(result.accepted, true);
-
-  const data = await rig.readData("mutable://accounts/test");
-  assertEquals(data, { name: "Alice" });
-});
-
 // ── Rig.count() tests ──
 
 Deno.test("Rig.count - returns count of items under prefix", async () => {
@@ -1678,191 +1374,6 @@ Deno.test("Rig.count - returns 0 for empty prefix", async () => {
 
 // rig.delete() no longer exists — Rig.count after delete test removed
 // rig.count() no longer takes pagination options — test removed
-
-// ── signEncryptAndSend() tests ──
-
-Deno.test("signEncryptAndSend - encrypt to self and read back", async () => {
-  const id = await Identity.generate();
-  const _route84 = connection(memClient(), ["*"]);
-  const rig = new Rig({
-    ...messageDataCanon,
-    routes: {
-      receive: [_route84],
-      read: [_route84],
-    },
-  });
-
-  const result = await signEncryptAndSend(id, rig, {
-    inputs: [],
-    outputs: [["mutable://open/enc-send/secrets", {
-      apiKey: "sk-test-123",
-    }]],
-  });
-  assertEquals(result.accepted, true);
-  assertEquals(result.uri.startsWith("hash://sha256/"), true);
-
-  // The encrypted data should be readable via readEncrypted
-  const secrets = await readEncrypted<{ apiKey: string }>(
-    id,
-    rig,
-    "mutable://open/enc-send/secrets",
-  );
-  assertEquals(secrets, { apiKey: "sk-test-123" });
-});
-
-Deno.test("signEncryptAndSend - stored data is actually encrypted (not plaintext)", async () => {
-  const id = await Identity.generate();
-  const _route85 = connection(memClient(), ["*"]);
-  const rig = new Rig({
-    ...messageDataCanon,
-    routes: {
-      receive: [_route85],
-      read: [_route85],
-    },
-  });
-
-  await signEncryptAndSend(id, rig, {
-    inputs: [],
-    outputs: [["mutable://open/enc-send/check", {
-      secret: "plaintext-value",
-    }]],
-  });
-
-  // Read raw data (not decrypted) — should be an EncryptedPayload, not the original
-  const raw = await rig.readData("mutable://open/enc-send/check");
-  assertEquals(typeof raw, "object");
-  assertEquals(raw !== null, true);
-  // Should have EncryptedPayload structure, not the original object
-  const payload = raw as Record<string, unknown>;
-  assertEquals("data" in payload, true);
-  assertEquals("nonce" in payload, true);
-  assertEquals("ephemeralPublicKey" in payload, true);
-  // Should NOT contain the plaintext
-  assertEquals("secret" in payload, false);
-});
-
-Deno.test("signEncryptAndSend - multiple encrypted outputs", async () => {
-  const id = await Identity.generate();
-  const _route86 = connection(memClient(), ["*"]);
-  const rig = new Rig({
-    ...messageDataCanon,
-    routes: {
-      receive: [_route86],
-      read: [_route86],
-    },
-  });
-
-  const result = await signEncryptAndSend(id, rig, {
-    inputs: [],
-    outputs: [
-      ["mutable://open/enc-batch/a", { v: 1 }],
-      ["mutable://open/enc-batch/b", { v: 2 }],
-    ],
-  });
-  assertEquals(result.accepted, true);
-
-  const a = await readEncrypted<{ v: number }>(
-    id,
-    rig,
-    "mutable://open/enc-batch/a",
-  );
-  const b = await readEncrypted<{ v: number }>(
-    id,
-    rig,
-    "mutable://open/enc-batch/b",
-  );
-  assertEquals(a, { v: 1 });
-  assertEquals(b, { v: 2 });
-});
-
-Deno.test("signEncryptAndSend - encrypt to another party", async () => {
-  const sender = await Identity.generate();
-  const receiver = await Identity.generate();
-  const _route87 = connection(memClient(), ["*"]);
-  const rig = new Rig({
-    ...messageDataCanon,
-    routes: {
-      receive: [_route87],
-      read: [_route87],
-    },
-  });
-
-  // Encrypt to receiver
-  await signEncryptAndSend(sender, rig, {
-    inputs: [],
-    outputs: [["mutable://open/enc-cross/msg", { text: "for receiver" }]],
-  }, receiver.encryptionPubkey);
-
-  // Receiver can decrypt
-  const msg = await readEncrypted<{ text: string }>(
-    receiver,
-    rig,
-    "mutable://open/enc-cross/msg",
-  );
-  assertEquals(msg, { text: "for receiver" });
-
-  // Sender should NOT be able to decrypt (encrypted to receiver's key)
-  try {
-    await readEncrypted(sender, rig, "mutable://open/enc-cross/msg");
-    // If it didn't throw, that's unexpected
-    assertEquals("should have thrown", "did not throw");
-  } catch {
-    // Expected — sender can't decrypt data encrypted to receiver
-  }
-});
-
-Deno.test("signEncryptAndSend - throws for public-only identity", async () => {
-  const id = Identity.publicOnly({ signing: "ab".repeat(32) });
-  const _route88 = connection(memClient(), ["*"]);
-  const rig = new Rig({
-    ...messageDataCanon,
-    routes: {
-      receive: [_route88],
-      read: [_route88],
-    },
-  });
-  await assertRejects(
-    () =>
-      signEncryptAndSend(id, rig, {
-        inputs: [],
-        outputs: [["mutable://open/x", 1]],
-      }),
-    Error,
-    "no encryption keys",
-  );
-});
-
-Deno.test("signEncryptAndSend - envelope is signed and verifiable", async () => {
-  const id = await Identity.generate();
-  const _route89 = connection(memClient(), ["*"]);
-  const rig = new Rig({
-    ...messageDataCanon,
-    routes: {
-      receive: [_route89],
-      read: [_route89],
-    },
-  });
-
-  const result = await signEncryptAndSend(id, rig, {
-    inputs: [],
-    outputs: [["mutable://open/enc-verify/x", { secret: true }]],
-  });
-
-  // Read the envelope at the hash URI
-  const envelope = await rig.readOrThrow<{
-    auth: Array<{ pubkey: string; signature: string }>;
-    inputs: string[];
-    outputs: Array<[string, unknown]>;
-  }>(result.uri);
-
-  // Verify the signature
-  assertEquals(envelope.auth[0].pubkey, id.pubkey);
-  const valid = await id.verify({
-    inputs: envelope.inputs,
-    outputs: envelope.outputs,
-  }, envelope.auth[0].signature);
-  assertEquals(valid, true);
-});
 
 // ── No-backend-registered rejection tests (createClientFromUrl) ──
 
@@ -2395,79 +1906,6 @@ Deno.test({
   },
 });
 
-// ── signAndSend many tests ──
-
-Deno.test("signAndSend many - sends multiple envelopes", async () => {
-  const id = await Identity.generate();
-  const _route97 = connection(memClient(), ["*"]);
-  const rig = new Rig({
-    ...messageDataCanon,
-    routes: {
-      receive: [_route97],
-      read: [_route97],
-    },
-  });
-
-  const results = [];
-  for (
-    const env of [
-      {
-        inputs: [] as string[],
-        outputs: [["mutable://open/wamulti/a", { n: 1 }]] as Output[],
-      },
-      {
-        inputs: [] as string[],
-        outputs: [["mutable://open/wamulti/b", { n: 2 }]] as Output[],
-      },
-    ]
-  ) {
-    results.push(await signAndSend(id, rig, env));
-  }
-
-  assertEquals(results.length, 2);
-  assertEquals(results[0].accepted, true);
-  assertEquals(results[1].accepted, true);
-
-  // Verify both values exist
-  const a = await rig.readData<{ n: number }>("mutable://open/wamulti/a");
-  const b = await rig.readData<{ n: number }>("mutable://open/wamulti/b");
-  assertEquals(a?.n, 1);
-  assertEquals(b?.n, 2);
-});
-
-Deno.test("signAndSend many - each envelope gets its own hash", async () => {
-  const id = await Identity.generate();
-  const _route98 = connection(memClient(), ["*"]);
-  const rig = new Rig({
-    ...messageDataCanon,
-    routes: {
-      receive: [_route98],
-      read: [_route98],
-    },
-  });
-
-  const results = [];
-  for (
-    const env of [
-      {
-        inputs: [] as string[],
-        outputs: [["mutable://open/wahash/x", "one"]] as Output[],
-      },
-      {
-        inputs: [] as string[],
-        outputs: [["mutable://open/wahash/y", "two"]] as Output[],
-      },
-    ]
-  ) {
-    results.push(await signAndSend(id, rig, env));
-  }
-
-  // Each result should have a unique hash URI
-  assertNotEquals(results[0].uri, results[1].uri);
-  assertEquals(results[0].uri.startsWith("hash://"), true);
-  assertEquals(results[1].uri.startsWith("hash://"), true);
-});
-
 // ── Hooks integration tests ──
 
 Deno.test("Rig hooks - beforeReceive throw rejects receive", async () => {
@@ -2564,10 +2002,8 @@ Deno.test("Rig hooks - afterRead throw propagates to caller", async () => {
 // rig.delete() no longer exists — beforeDelete hook test removed
 
 Deno.test("Rig hooks - beforeSend throw rejects send", async () => {
-  const id = await Identity.generate();
   const _route103 = connection(memClient(), ["*"]);
   const rig = new Rig({
-    ...messageDataCanon,
     routes: {
       receive: [_route103],
       read: [_route103],
@@ -2580,11 +2016,7 @@ Deno.test("Rig hooks - beforeSend throw rejects send", async () => {
   });
 
   await assertRejects(
-    () =>
-      signAndSend(id, rig, {
-        inputs: [],
-        outputs: [["mutable://open/x", { v: 1 }]],
-      }),
+    () => rig.send([["mutable://open/x", { v: 1 }]]),
     Error,
     "rate limited",
   );
