@@ -1,0 +1,8 @@
+src/
+libs/
+deno.json
+deno.lock
+.git/
+.github/
+*.test.ts
+*.log
