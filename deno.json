@@ -10,7 +10,6 @@
     "./network": "./src/network.ts",
     "./client-console": "./src/client-console.ts"
   },
-  "nodeModulesDir": "auto",
   "imports": {
     "@std/assert": "jsr:@std/assert@^1.0.15",
     "@std/encoding": "jsr:@std/encoding@^1.0.10",
