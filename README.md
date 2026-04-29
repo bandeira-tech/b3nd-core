@@ -14,10 +14,12 @@ speaks the `ProtocolInterfaceNode` (PIN) interface.
 ```typescript
 import { connection, DataStoreClient, MemoryStore, Rig } from "@bandeira-tech/b3nd-core";
 
+const client = new DataStoreClient(new MemoryStore());
+
 const rig = new Rig({
   routes: {
-    receive: [connection(new DataStoreClient(new MemoryStore()), ["*"])],
-    read:    [connection(new DataStoreClient(new MemoryStore()), ["*"])],
+    receive: [connection(client, ["*"])],
+    read:    [connection(client, ["*"])],
   },
 });
 
