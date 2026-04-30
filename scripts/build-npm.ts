@@ -21,16 +21,16 @@ await emptyDir("./npm");
 await build({
   entryPoints: [
     { name: ".", path: "./mod.ts" },
-    { name: "./types", path: "./types.ts" },
-    { name: "./encoding", path: "./encoding.ts" },
-    { name: "./binary", path: "./binary.ts" },
-    { name: "./network", path: "./network.ts" },
+    { name: "./types", path: "./libs/b3nd-core/types.ts" },
+    { name: "./encoding", path: "./libs/b3nd-core/encoding.ts" },
+    { name: "./binary", path: "./libs/b3nd-core/binary.ts" },
+    { name: "./network", path: "./libs/b3nd-network/mod.ts" },
     { name: "./rig", path: "./rig.ts" },
-    { name: "./identity", path: "./identity.ts" },
+    { name: "./identity", path: "./libs/b3nd-rig/identity.ts" },
     { name: "./client-http", path: "./client-http.ts" },
     { name: "./client-ws", path: "./client-ws.ts" },
-    { name: "./client-memory", path: "./client-memory.ts" },
-    { name: "./client-console", path: "./client-console.ts" },
+    { name: "./client-memory", path: "./libs/b3nd-client-memory/store.ts" },
+    { name: "./client-console", path: "./libs/b3nd-client-console/mod.ts" },
   ],
   outDir: "./npm",
   // Deno.* types aren't in the published surface (verified) — no shim needed.
