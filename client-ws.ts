@@ -5,9 +5,9 @@
  * global available in browsers, Deno, and Node 22+.
  */
 
-export { WebSocketClient } from "../libs/b3nd-client-ws/mod.ts";
+export { WebSocketClient } from "./libs/b3nd-client-ws/mod.ts";
 export type {
   WebSocketClientConfig,
   WebSocketRequest,
   WebSocketResponse,
-} from "../libs/b3nd-core/types.ts";
+} from "./libs/b3nd-core/types.ts";

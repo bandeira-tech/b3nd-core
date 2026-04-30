@@ -3,17 +3,17 @@
   "version": "0.10.0",
   "description": "B3nd Core — framework foundation: types, encoding, clients, rig, network",
   "exports": {
-    ".": "./src/mod.ts",
-    "./types": "./src/types.ts",
-    "./encoding": "./src/encoding.ts",
-    "./binary": "./src/binary.ts",
-    "./network": "./src/network.ts",
-    "./rig": "./src/rig.ts",
-    "./identity": "./src/identity.ts",
-    "./client-http": "./src/client-http.ts",
-    "./client-ws": "./src/client-ws.ts",
-    "./client-memory": "./src/client-memory.ts",
-    "./client-console": "./src/client-console.ts"
+    ".": "./mod.ts",
+    "./types": "./types.ts",
+    "./encoding": "./encoding.ts",
+    "./binary": "./binary.ts",
+    "./network": "./network.ts",
+    "./rig": "./rig.ts",
+    "./identity": "./identity.ts",
+    "./client-http": "./client-http.ts",
+    "./client-ws": "./client-ws.ts",
+    "./client-memory": "./client-memory.ts",
+    "./client-console": "./client-console.ts"
   },
   "imports": {
     "@std/assert": "jsr:@std/assert@^1.0.15",
@@ -21,8 +21,9 @@
     "canonicalize": "npm:canonicalize@2.0.0"
   },
   "tasks": {
-    "check": "deno check src/mod.ts",
-    "test": "deno test --allow-all libs/"
+    "check": "deno check mod.ts",
+    "test": "deno test --allow-all libs/",
+    "build:npm": "deno run -A scripts/build-npm.ts"
   },
   "compilerOptions": {
     "strict": true,

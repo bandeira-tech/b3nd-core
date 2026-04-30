@@ -13,7 +13,7 @@
  */
 
 // ── Rig ──
-export { Rig } from "../libs/b3nd-rig/rig.ts";
+export { Rig } from "./libs/b3nd-rig/rig.ts";
 export type {
   RigConfig,
   RigInfo,
@@ -21,7 +21,7 @@ export type {
   WatchAllOptions,
   WatchAllSnapshot,
   WatchOptions,
-} from "../libs/b3nd-rig/types.ts";
+} from "./libs/b3nd-rig/types.ts";
 
 // ── OperationHandle ──
 export type {
@@ -37,14 +37,14 @@ export type {
   RouteErrorEvent,
   RouteSuccessEvent,
   SettledEvent,
-} from "../libs/b3nd-rig/operation-handle.ts";
+} from "./libs/b3nd-rig/operation-handle.ts";
 
 // ── Connection ──
-export { connection } from "../libs/b3nd-rig/connection.ts";
+export { connection } from "./libs/b3nd-rig/connection.ts";
 export type {
   Connection,
   ConnectionOptions,
-} from "../libs/b3nd-rig/connection.ts";
+} from "./libs/b3nd-rig/connection.ts";
 
 // ── Hooks ──
 export type {
@@ -58,36 +58,36 @@ export type {
   ReceiveCtx,
   RigHooks,
   SendCtx,
-} from "../libs/b3nd-rig/hooks.ts";
+} from "./libs/b3nd-rig/hooks.ts";
 export {
   resolveHooks,
   runAfter,
   runBefore,
   runOnError,
-} from "../libs/b3nd-rig/hooks.ts";
+} from "./libs/b3nd-rig/hooks.ts";
 
 // ── Events ──
 export type {
   EventHandler,
   RigEvent,
   RigEventName,
-} from "../libs/b3nd-rig/events.ts";
-export { RigEventEmitter } from "../libs/b3nd-rig/events.ts";
+} from "./libs/b3nd-rig/events.ts";
+export { RigEventEmitter } from "./libs/b3nd-rig/events.ts";
 
 // ── Reactions ──
-export type { ReactionHandler } from "../libs/b3nd-rig/reactions.ts";
-export { matchPattern, ReactionRegistry } from "../libs/b3nd-rig/reactions.ts";
+export type { ReactionHandler } from "./libs/b3nd-rig/reactions.ts";
+export { matchPattern, ReactionRegistry } from "./libs/b3nd-rig/reactions.ts";
 
 // ── HTTP API helper ──
-export { httpApi } from "../libs/b3nd-rig/http.ts";
-export type { HttpApiOptions } from "../libs/b3nd-rig/http.ts";
+export { httpApi } from "./libs/b3nd-rig/http.ts";
+export type { HttpApiOptions } from "./libs/b3nd-rig/http.ts";
 
 // ── Server factory ──
-export { createServers } from "../libs/b3nd-rig/server-factory.ts";
+export { createServers } from "./libs/b3nd-rig/server-factory.ts";
 export type {
   ServerResolver,
   TransportServer,
-} from "../libs/b3nd-rig/server-factory.ts";
+} from "./libs/b3nd-rig/server-factory.ts";
 
 // ── Backend factory ──
 export {
@@ -96,9 +96,9 @@ export {
   createStoreFromUrl,
   createStoreResolver,
   getSupportedProtocols,
-} from "../libs/b3nd-rig/backend-factory.ts";
+} from "./libs/b3nd-rig/backend-factory.ts";
 export type {
   BackendFactoryOptions,
   BackendResolver,
   StoreClientConstructor,
-} from "../libs/b3nd-rig/backend-factory.ts";
+} from "./libs/b3nd-rig/backend-factory.ts";

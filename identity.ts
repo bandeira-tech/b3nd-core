@@ -7,5 +7,5 @@
  * needing the rest of the Rig surface.
  */
 
-export { Identity } from "../libs/b3nd-rig/identity.ts";
-export type { ExportedIdentity } from "../libs/b3nd-rig/identity.ts";
+export { Identity } from "./libs/b3nd-rig/identity.ts";
+export type { ExportedIdentity } from "./libs/b3nd-rig/identity.ts";

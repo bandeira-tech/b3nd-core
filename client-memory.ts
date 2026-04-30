@@ -7,4 +7,4 @@
  * (from the root export) to get a `ProtocolInterfaceNode`.
  */
 
-export { MemoryStore } from "../libs/b3nd-client-memory/store.ts";
+export { MemoryStore } from "./libs/b3nd-client-memory/store.ts";

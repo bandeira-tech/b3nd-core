@@ -1,25 +1,30 @@
 # B3nd Core
 
-Framework foundation for B3nd. Types, encoding, clients, Rig, Identity,
-network primitives -- everything needed to run a decentralized network
-without any protocol-specific logic.
+Framework foundation for B3nd. Types, encoding, clients, Rig, Identity, network
+primitives -- everything needed to run a decentralized network without any
+protocol-specific logic.
 
 [GitHub](https://github.com/bandeira-tech/b3nd-core)
 
 ## The Rig
 
-The Rig wires storage, validation, and behavior into a single object that
-speaks the `ProtocolInterfaceNode` (PIN) interface.
+The Rig wires storage, validation, and behavior into a single object that speaks
+the `ProtocolInterfaceNode` (PIN) interface.
 
 ```typescript
-import { connection, DataStoreClient, MemoryStore, Rig } from "@bandeira-tech/b3nd-core";
+import {
+  connection,
+  DataStoreClient,
+  MemoryStore,
+  Rig,
+} from "@bandeira-tech/b3nd-core";
 
 const client = new DataStoreClient(new MemoryStore());
 
 const rig = new Rig({
   routes: {
     receive: [connection(client, ["*"])],
-    read:    [connection(client, ["*"])],
+    read: [connection(client, ["*"])],
   },
 });
 
@@ -30,8 +35,8 @@ const data = await rig.readData("mutable://open/greeting");
 
 ### Connections
 
-Connections bind clients to URI patterns. The rig routes automatically --
-writes broadcast to all matching connections, reads try each in order.
+Connections bind clients to URI patterns. The rig routes automatically -- writes
+broadcast to all matching connections, reads try each in order.
 
 ```typescript
 const rig = new Rig({
@@ -40,8 +45,8 @@ const rig = new Rig({
       connection(postgresClient, ["mutable://*", "hash://*"]),
     ],
     read: [
-      connection(memoryClient,   ["mutable://*", "hash://*"]),  // fast cache first
-      connection(postgresClient, ["mutable://*", "hash://*"]),  // fallback
+      connection(memoryClient, ["mutable://*", "hash://*"]), // fast cache first
+      connection(postgresClient, ["mutable://*", "hash://*"]), // fallback
     ],
   },
 });
@@ -71,7 +76,10 @@ Ed25519 signing + X25519 encryption, seed-deterministic or generated.
 ```typescript
 const id = await Identity.fromSeed("my-secret");
 const auth = await id.sign({ action: "transfer", amount: 100 });
-const valid = await id.verify({ action: "transfer", amount: 100 }, auth.signature);
+const valid = await id.verify(
+  { action: "transfer", amount: 100 },
+  auth.signature,
+);
 ```
 
 ### Hooks, Events, Reactions
@@ -114,7 +122,7 @@ Deno.serve, Hono, Express, Cloudflare Workers.
 Peer-to-peer replication with pluggable policies.
 
 ```typescript
-import { network, peer, flood } from "@bandeira-tech/b3nd-core";
+import { flood, network, peer } from "@bandeira-tech/b3nd-core";
 
 const net = network(localRig, [
   peer(remoteClient, { patterns: ["mutable://*"] }),
@@ -123,22 +131,24 @@ const net = network(localRig, [
 
 ## Libraries
 
-| Library | Description |
-| --- | --- |
-| `b3nd-core` | Types, encoding, binary, client base classes, ObserveEmitter |
-| `b3nd-rig` | Rig, Identity, connections, hooks, events, reactions, HTTP API, factories |
-| `b3nd-network` | `network()`, `peer()`, flood, path-vector, tell-and-read policies |
-| `b3nd-client-memory` | In-memory Store (no external dependencies) |
-| `b3nd-client-http` | HTTP transport client |
-| `b3nd-client-ws` | WebSocket transport client with reconnection |
-| `b3nd-client-console` | Console output (write-only, for debugging) |
-| `b3nd-testing` | Shared test suites and helpers |
-| `b3nd-encrypt` | Ed25519 signing, X25519 encryption, AES-GCM, PBKDF2 |
+| Library               | Description                                                               |
+| --------------------- | ------------------------------------------------------------------------- |
+| `b3nd-core`           | Types, encoding, binary, client base classes, ObserveEmitter              |
+| `b3nd-rig`            | Rig, Identity, connections, hooks, events, reactions, HTTP API, factories |
+| `b3nd-network`        | `network()`, `peer()`, flood, path-vector, tell-and-read policies         |
+| `b3nd-client-memory`  | In-memory Store (no external dependencies)                                |
+| `b3nd-client-http`    | HTTP transport client                                                     |
+| `b3nd-client-ws`      | WebSocket transport client with reconnection                              |
+| `b3nd-client-console` | Console output (write-only, for debugging)                                |
+| `b3nd-testing`        | Shared test suites and helpers                                            |
+| `b3nd-encrypt`        | Ed25519 signing, X25519 encryption, AES-GCM, PBKDF2                       |
 
 Server transports and gRPC live in their own packages:
 
-- [@bandeira-tech/b3nd-server-http](https://github.com/bandeira-tech/b3nd-server-http) — Hono-backed HTTP `ServerResolver`
-- [@bandeira-tech/b3nd-grpc](https://github.com/bandeira-tech/b3nd-grpc) — Connect-protocol client + server + wire schema
+- [@bandeira-tech/b3nd-server-http](https://github.com/bandeira-tech/b3nd-server-http)
+  — Hono-backed HTTP `ServerResolver`
+- [@bandeira-tech/b3nd-grpc](https://github.com/bandeira-tech/b3nd-grpc) —
+  Connect-protocol client + server + wire schema
 
 ## Subpath Exports
 
@@ -167,8 +177,10 @@ libs/          # 13 libraries (see table above)
 
 ## Related
 
-- [b3nd-canon](https://github.com/bandeira-tech/b3nd-canon) -- protocol toolkit (msg, hash, auth, encrypt, wallet)
-- [b3nd-sdk](https://github.com/bandeira-tech/b3nd-sdk) -- SDK umbrella that re-exports core + canon
+- [b3nd-canon](https://github.com/bandeira-tech/b3nd-canon) -- protocol toolkit
+  (msg, hash, auth, encrypt, wallet)
+- [b3nd-sdk](https://github.com/bandeira-tech/b3nd-sdk) -- SDK umbrella that
+  re-exports core + canon
 
 ## License
 

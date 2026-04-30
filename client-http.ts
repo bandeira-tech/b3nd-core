@@ -7,5 +7,5 @@
  * the rest of the Rig surface isn't needed.
  */
 
-export { HttpClient } from "../libs/b3nd-client-http/mod.ts";
-export type { HttpClientConfig } from "../libs/b3nd-core/types.ts";
+export { HttpClient } from "./libs/b3nd-client-http/mod.ts";
+export type { HttpClientConfig } from "./libs/b3nd-core/types.ts";
