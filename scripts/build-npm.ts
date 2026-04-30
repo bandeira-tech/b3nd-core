@@ -62,6 +62,9 @@ await build({
       node: ">=20",
     },
     sideEffects: false,
+    publishConfig: {
+      access: "public",
+    },
   },
   postBuild() {
     Deno.copyFileSync("LICENSE", "npm/LICENSE");
