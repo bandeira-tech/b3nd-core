@@ -1,6 +1,6 @@
 {
   "name": "@bandeira-tech/b3nd-core",
-  "version": "0.11.0",
+  "version": "0.12.0",
   "description": "B3nd Core — framework foundation: types, encoding, clients, rig, network",
   "exports": {
     ".": "./mod.ts",

@@ -96,13 +96,10 @@ export { connection } from "./connection.ts";
 export type { Connection, ConnectionOptions } from "./connection.ts";
 export type { RigRoutes } from "./types.ts";
 
-// HTTP API — standalone function for serving a rig over HTTP
+// HTTP API — standalone function for serving a rig over HTTP.
+// Server composition + transports live in @bandeira-tech/b3nd-servers.
 export { httpApi } from "./http.ts";
 export type { HttpApiOptions } from "./http.ts";
-
-// Server factory — composable transport layer
-export { createServers } from "./server-factory.ts";
-export type { ServerResolver, TransportServer } from "./server-factory.ts";
 
 // Backend factory
 export {

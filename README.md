@@ -143,12 +143,16 @@ const net = network(localRig, [
 | `b3nd-testing`        | Shared test suites and helpers                                            |
 | `b3nd-encrypt`        | Ed25519 signing, X25519 encryption, AES-GCM, PBKDF2                       |
 
-Server transports and gRPC live in their own packages:
+Server-side composition and transports live in
+[@bandeira-tech/b3nd-servers](https://github.com/bandeira-tech/b3nd-servers).
+Subpaths: `.` (`createServers`, `ServerResolver`, `withCors`), `./http`
+(`httpServer`), `./grpc/server` (`grpcServer`), `./grpc/api` (universal
+`grpcApi`), `./grpc/client` (`GrpcClient`), `./grpc/proto` (wire schema).
+The universal slice ships to JSR + NPM; the `Deno.serve`-using slice is
+JSR-only.
 
-- [@bandeira-tech/b3nd-server-http](https://github.com/bandeira-tech/b3nd-server-http)
-  — Hono-backed HTTP `ServerResolver`
-- [@bandeira-tech/b3nd-grpc](https://github.com/bandeira-tech/b3nd-grpc) —
-  Connect-protocol client + server + wire schema
+Core itself only ships the pure `httpApi(rig)` request handler — feed it
+to any HTTP runtime (Deno, Hono, Express, Cloudflare Workers, …).
 
 ## Subpath Exports
 

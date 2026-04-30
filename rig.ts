@@ -2,10 +2,13 @@
  * @module
  * Rig subpath — the orchestration layer of B3nd.
  *
- * Bundles `Rig`, `connection`, the `ServerResolver` contract, the
- * backend-factory URL helpers, hooks, events, reactions, and the HTTP
- * API helper. Browsers and servers alike can pull this in to compose
- * a node without reaching for the root export.
+ * Bundles `Rig`, `connection`, the backend-factory URL helpers, hooks,
+ * events, reactions, and the `httpApi` request handler. Browsers and
+ * servers alike can pull this in to compose a node without reaching
+ * for the root export.
+ *
+ * Server-side composition (`createServers`, `ServerResolver`, CORS,
+ * transports) lives in `@bandeira-tech/b3nd-servers`.
  *
  * Tree-shakers will drop unused symbols — if you only need `HttpClient`
  * or `WebSocketClient`, prefer the dedicated `./client-http` /
@@ -81,13 +84,6 @@ export { matchPattern, ReactionRegistry } from "./libs/b3nd-rig/reactions.ts";
 // ── HTTP API helper ──
 export { httpApi } from "./libs/b3nd-rig/http.ts";
 export type { HttpApiOptions } from "./libs/b3nd-rig/http.ts";
-
-// ── Server factory ──
-export { createServers } from "./libs/b3nd-rig/server-factory.ts";
-export type {
-  ServerResolver,
-  TransportServer,
-} from "./libs/b3nd-rig/server-factory.ts";
 
 // ── Backend factory ──
 export {

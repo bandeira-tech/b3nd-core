@@ -139,16 +139,10 @@ export type {
   ConnectionOptions,
 } from "./libs/b3nd-rig/connection.ts";
 
-// HTTP API
+// HTTP API — pure request handler. Server composition + transports
+// (httpServer, grpcServer, withCors) live in @bandeira-tech/b3nd-servers.
 export { httpApi } from "./libs/b3nd-rig/http.ts";
 export type { HttpApiOptions } from "./libs/b3nd-rig/http.ts";
-
-// Server factory
-export { createServers } from "./libs/b3nd-rig/server-factory.ts";
-export type {
-  ServerResolver,
-  TransportServer,
-} from "./libs/b3nd-rig/server-factory.ts";
 
 // Backend factory
 export {

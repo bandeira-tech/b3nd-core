@@ -18,8 +18,8 @@
  * External backends are registered via BackendResolver[]:
  *   postgresql://, mongodb://, sqlite://, file://, grpc://, etc.
  *
- * For gRPC support, see `@bandeira-tech/b3nd-grpc` — instantiate
- * `GrpcClient` directly or wire it through a custom resolver.
+ * For gRPC support, see `@bandeira-tech/b3nd-servers/grpc/client` —
+ * instantiate `GrpcClient` directly or wire it through a custom resolver.
  */
 
 import type { ProtocolInterfaceNode, Store } from "../b3nd-core/types.ts";
