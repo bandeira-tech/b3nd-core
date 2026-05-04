@@ -198,36 +198,44 @@ export function httpApi(
     }
 
     // ── Receive ──
+    // Body is a batch of message tuples: [[uri, payload], ...]. Matches
+    // what HttpClient.receive(msgs) sends and what Rig.receive(msgs) takes,
+    // so the result array shape passes straight through.
     if (method === "POST" && path === "/api/v1/receive") {
-      let msg: unknown;
+      let body: unknown;
       try {
-        msg = await req.json();
+        body = await req.json();
       } catch {
         return json(
-          { accepted: false, error: "Invalid JSON body" },
+          [{ accepted: false, error: "Invalid JSON body" }],
           400,
         );
       }
-      if (!Array.isArray(msg) || msg.length !== 2) {
+      if (
+        !Array.isArray(body) || body.length === 0 ||
+        !body.every((m) => Array.isArray(m) && m.length === 2)
+      ) {
         return json(
-          { accepted: false, error: "Expected [uri, payload]" },
+          [{ accepted: false, error: "Expected [[uri, payload], ...]" }],
           400,
         );
       }
-      const [uri, rawPayload] = msg as [unknown, unknown];
-      if (!uri || typeof uri !== "string") {
-        return json(
-          { accepted: false, error: "URI is required" },
-          400,
-        );
+      const batch: [string, unknown][] = [];
+      for (const [uri, rawPayload] of body as [unknown, unknown][]) {
+        if (!uri || typeof uri !== "string") {
+          return json(
+            [{ accepted: false, error: "URI is required" }],
+            400,
+          );
+        }
+        batch.push([uri, deserializeBinary(rawPayload)]);
       }
-      const payload = deserializeBinary(rawPayload);
-      // Pass the message through as-is. Decomposition is a protocol
-      // concern (install messageDataProgram + messageDataHandler on the
-      // Rig if you want envelope semantics); SimpleClient/DataStoreClient
-      // never decompose on their own.
-      const results = await rig.receive([[uri, payload]]);
-      return json(results[0], results[0].accepted ? 200 : 400);
+      // Decomposition is a protocol concern (install messageDataProgram +
+      // messageDataHandler on the Rig if you want envelope semantics);
+      // SimpleClient/DataStoreClient never decompose on their own.
+      const results = await rig.receive(batch);
+      const allAccepted = results.every((r) => r.accepted);
+      return json(results, allAccepted ? 200 : 400);
     }
 
     // ── Read ──
