@@ -45,6 +45,7 @@
 
 import type {
   Message,
+  ObserveEvent,
   ProtocolInterfaceNode,
   ReadResult,
   ReceiveResult,
@@ -120,16 +121,16 @@ export function floodImpl(
 
     // ── observe ──────────────────────────────────────────────────────
 
-    async *observe<T = unknown>(
+    async *observe(
       urls: string[],
       signal: AbortSignal,
-    ): AsyncIterable<ReadResult<T>> {
-      const queue: ReadResult<T>[] = [];
+    ): AsyncIterable<ObserveEvent> {
+      const queue: ObserveEvent[] = [];
       let wake: (() => void) | null = null;
 
       const forwarders = peers.map(async (p) => {
         try {
-          for await (const r of p.client.observe<T>(urls, signal)) {
+          for await (const r of p.client.observe(urls, signal)) {
             queue.push(r);
             const w = wake;
             if (w) {

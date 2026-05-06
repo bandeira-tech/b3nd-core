@@ -8,6 +8,7 @@
 import type {
   HttpClientConfig,
   Message,
+  ObserveEvent,
   ProtocolInterfaceNode,
   ReadResult,
   ReceiveResult,
@@ -15,6 +16,7 @@ import type {
 } from "../b3nd-core/types.ts";
 import { encodeBase64 } from "../b3nd-core/encoding.ts";
 import { decodeBinaryFromJson } from "../b3nd-core/binary.ts";
+import { routingKey } from "../b3nd-core/url.ts";
 import { openSseStream } from "./sse.ts";
 
 /**
@@ -162,7 +164,7 @@ export class HttpClient implements ProtocolInterfaceNode {
   async read<T = unknown>(urls: string[]): Promise<ReadResult<T>[]> {
     if (urls.length === 0) return [];
     try {
-      const response = await this.request("/api/v2/read", {
+      const response = await this.request("/api/v1/read", {
         method: "POST",
         body: JSON.stringify({ urls }),
       });
@@ -187,30 +189,64 @@ export class HttpClient implements ProtocolInterfaceNode {
     }
   }
 
-  async *observe<T = unknown>(
+  async *observe(
     urls: string[],
     signal: AbortSignal,
-  ): AsyncIterable<ReadResult<T>> {
-    // TODO(phase-7): true multi-url observe over a single SSE stream.
-    // For now, route through the first url's pattern.
-    const pattern = urls[0] ?? "";
-    // Convert URI pattern to SSE endpoint path
-    // "mutable://data/market/*" → strip :param and * → "mutable://data/market"
-    // → "/api/v1/observe/mutable/data/market"
-    const segments = pattern.split("/");
-    const prefix = segments
-      .filter((s) => !s.startsWith(":") && s !== "*")
-      .join("/");
-    const uriPath = prefix.replace("://", "/");
-    const url = `${this.baseUrl}/api/v1/observe/${uriPath}`;
+  ): AsyncIterable<ObserveEvent> {
+    if (urls.length === 0) return;
 
-    for await (const event of openSseStream(url, { signal })) {
-      if (signal.aborted) break;
-      yield {
-        success: true,
-        uri: event.uri,
-        record: { data: event.data as T },
-      } as ReadResult<T>;
+    // Open one SSE stream per url's routing key. The query string is
+    // ignored — observe is INV-style and only the uri pattern matters.
+    const queue: ObserveEvent[] = [];
+    let wake: (() => void) | null = null;
+
+    const forwarders = urls.map(async (url) => {
+      const pattern = routingKey(url);
+      // "mutable://data/market/*" → "mutable://data/market"
+      const segments = pattern.split("/");
+      const prefix = segments
+        .filter((s) => !s.startsWith(":") && s !== "*")
+        .join("/");
+      const uriPath = prefix.replace("://", "/");
+      const sseUrl = `${this.baseUrl}/api/v1/observe/${uriPath}`;
+      try {
+        for await (const event of openSseStream(sseUrl, { signal })) {
+          if (signal.aborted) return;
+          if (typeof event.uri === "string") {
+            queue.push({ uri: event.uri });
+            const w = wake;
+            if (w) {
+              wake = null;
+              w();
+            }
+          }
+        }
+      } catch {
+        // Per-stream errors are swallowed — one broken peer should
+        // not tear down the merged stream.
+      }
+    });
+
+    const onAbort = () => {
+      const w = wake;
+      if (w) {
+        wake = null;
+        w();
+      }
+    };
+    signal.addEventListener("abort", onAbort, { once: true });
+
+    try {
+      while (true) {
+        while (queue.length > 0) yield queue.shift()!;
+        if (signal.aborted) return;
+        await new Promise<void>((resolve) => {
+          wake = resolve;
+        });
+      }
+    } finally {
+      signal.removeEventListener("abort", onAbort);
+      await Promise.allSettled(forwarders);
     }
   }
 

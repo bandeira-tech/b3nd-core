@@ -20,6 +20,7 @@
 
 import type {
   Message,
+  ObserveEvent,
   ProtocolInterfaceNode,
   ReadResult,
   ReceiveResult,
@@ -70,16 +71,16 @@ export class ConsoleClient implements ProtocolInterfaceNode {
     );
   }
 
-  observe<T = unknown>(
+  observe(
     _urls: string[],
     _signal?: AbortSignal,
-  ): AsyncIterable<ReadResult<T>> {
+  ): AsyncIterable<ObserveEvent> {
     return {
       [Symbol.asyncIterator]() {
         return {
           next: () =>
             Promise.resolve({
-              value: undefined as unknown as ReadResult<T>,
+              value: undefined as unknown as ObserveEvent,
               done: true,
             }),
         };

@@ -13,6 +13,19 @@ export interface WriteResult<T = unknown> {
 }
 
 /**
+ * Observation event — emitted by `observe(urls)` when an entry under
+ * a watched routing key changes.
+ *
+ * Carries the uri only, INV-style. The observer reads the entity at
+ * that uri to learn its current state (or `success:false` if it was
+ * deleted). No payload is included on the wire — this keeps the
+ * notification cheap and the read path the single source of truth.
+ */
+export interface ObserveEvent {
+  uri: string;
+}
+
+/**
  * Result of a read operation.
  *
  * `uri` is present when the result describes a specific entry within a
@@ -212,27 +225,31 @@ export interface ProtocolInterfaceNode {
   read<T = unknown>(urls: string[]): Promise<ReadResult<T>[]>;
 
   /**
-   * Observe a batch of urls. Same grammar as `read` — the `fn` shapes
-   * the stream (point updates for `read`, additions/removals for `ls`,
-   * count changes for `count`, provider-defined for `x-*`).
+   * Observe a batch of urls — INV-style notification. Yields the uri
+   * of any entry under a watched routing key whose state changed
+   * (write, delete, or update). The observer reads that uri to learn
+   * the new state.
    *
-   * Returns an async iterable that yields `ReadResult` items as changes
-   * arrive. Subscription identity is the routing key (uri); the query
-   * string filters the stream. The `signal` controls lifecycle — abort
-   * to stop observing.
+   * No payload, no fn-aware shaping: the `fn`/params on each url are
+   * not interpreted by the framework — only the routing key is used
+   * for matching. Backends are free to inspect them, but portable
+   * code should treat observe as "tell me which uris changed".
+   *
+   * The `signal` controls lifecycle — abort to stop observing.
    *
    * @example
    * ```ts
    * const abort = new AbortController();
-   * for await (const r of client.observe(["mutable://market/*"], abort.signal)) {
-   *   console.log(r.uri, r.record?.data);
+   * for await (const ev of client.observe(["mutable://market/*"], abort.signal)) {
+   *   const [{ record }] = await client.read([ev.uri]);
+   *   console.log(ev.uri, record?.data);
    * }
    * ```
    */
-  observe<T = unknown>(
+  observe(
     urls: string[],
     signal: AbortSignal,
-  ): AsyncIterable<ReadResult<T>>;
+  ): AsyncIterable<ObserveEvent>;
 
   /**
    * Status — health + capabilities.
@@ -518,6 +535,8 @@ export interface WebSocketRequest {
   type:
     | "receive"
     | "read"
+    | "observe"
+    | "observe-cancel"
     | "status";
   payload: unknown;
 }

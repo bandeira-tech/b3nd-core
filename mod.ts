@@ -18,6 +18,7 @@ export type {
   HealthStatus,
   HttpClientConfig,
   Message,
+  ObserveEvent,
   Output,
   Program,
   ProgramResult,

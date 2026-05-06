@@ -108,8 +108,14 @@ async function runPeer(
     .filter((r): r is NonNullable<typeof r> => r !== undefined);
 
   try {
-    for await (const ev of peer.client.observe([pattern], signal)) {
+    for await (const note of peer.client.observe([pattern], signal)) {
       if (signal.aborted) break;
+      // INV: the observe event tells us a uri changed. Pull the
+      // current state from the peer so policies see ReadResult-shaped
+      // events with the content attached.
+      const [fetched] = await peer.client.read([note.uri]);
+      if (!fetched) continue;
+      const ev = { ...fetched, uri: note.uri } as ReadResult<unknown>;
       for await (const out of foldReceive(ev, hooks, peer, ctx)) {
         if (signal.aborted) break;
         await forward(target, out, onError, peer.id);

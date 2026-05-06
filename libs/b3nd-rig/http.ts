@@ -10,8 +10,8 @@
  * Routes:
  *   GET  /api/v1/status                → rig.status()
  *   POST /api/v1/receive               → rig.receive([[uri, payload]])
- *   POST /api/v2/read                  → rig.read(urls)   body: { urls }
- *   GET  /api/v1/observe/:pattern       → SSE stream from rig events
+ *   POST /api/v1/read                  → rig.read(urls)   body: { urls }
+ *   GET  /api/v1/observe/:pattern       → INV-style SSE stream (uri only)
  *
  * @example
  * ```ts
@@ -131,12 +131,11 @@ export function httpApi(
   };
   const subscribers = new Set<SseSubscriber>();
 
-  // Wire rig events to SSE subscribers
+  // Wire rig events to SSE subscribers — INV-style, uri only.
   const pushToSubscribers = (e: RigEvent) => {
     if (!e.uri || subscribers.size === 0) return;
-    const event = { uri: e.uri, data: e.data, ts: e.ts };
     const payload = `id: ${e.ts}\nevent: write\ndata: ${
-      JSON.stringify(event)
+      JSON.stringify({ uri: e.uri })
     }\n\n`;
     for (const sub of subscribers) {
       if (sub.closed) continue;
@@ -217,7 +216,7 @@ export function httpApi(
     // the `fn`/params interpretation. Binary `record.data` is wrapped
     // for JSON transport via `encodeBinaryForJson`; the client undoes
     // it with `decodeBinaryFromJson`.
-    if (method === "POST" && path === "/api/v2/read") {
+    if (method === "POST" && path === "/api/v1/read") {
       let body: unknown;
       try {
         body = await req.json();
@@ -267,23 +266,19 @@ export function httpApi(
           };
           subscribers.add(sub);
 
-          // Send backlog (items since timestamp) via trailing-slash read
+          // Send backlog of uris under the prefix as INV events. The
+          // observer reads each uri to learn its current state.
           (async () => {
             try {
               const listUri = uri.endsWith("/") ? uri : `${uri}/`;
               const results = await rig.read([listUri]);
               for (const item of results) {
                 if (sub.closed) break;
-                if (!item.success || !item.record || !item.uri) continue;
+                if (!item.success || !item.uri) continue;
                 const now = Date.now();
-                const event = {
-                  uri: item.uri,
-                  data: item.record.data,
-                  ts: now,
-                };
                 sub.write(
                   `id: ${now}\nevent: write\ndata: ${
-                    JSON.stringify(event)
+                    JSON.stringify({ uri: item.uri })
                   }\n\n`,
                 );
               }

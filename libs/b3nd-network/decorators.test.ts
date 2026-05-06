@@ -65,12 +65,8 @@ Deno.test("bestEffort passes through observe unchanged (not a silent no-op)", as
   const inner: ProtocolInterfaceNode = {
     receive: (m) => Promise.resolve(m.map(() => ({ accepted: true }))),
     read: () => Promise.resolve([]),
-    async *observe<T = unknown>() {
-      yield {
-        success: true,
-        uri: "mutable://x/1",
-        record: { data: 1 as T },
-      } as ReadResult<T>;
+    async *observe() {
+      yield { uri: "mutable://x/1" };
     },
     status: () => Promise.resolve({ status: "healthy" as const }),
   };

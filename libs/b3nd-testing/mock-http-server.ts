@@ -71,9 +71,9 @@ export class MockHttpServer {
         return await this.handleReceive(req);
       }
 
-      // Read endpoint (v2: batch POST with { urls: string[] })
-      if (req.method === "POST" && url.pathname === "/api/v2/read") {
-        return await this.handleReadV2(req);
+      // Read endpoint — batch POST with `{ urls: string[] }`
+      if (req.method === "POST" && url.pathname === "/api/v1/read") {
+        return await this.handleRead(req);
       }
 
       return new Response("Not Found", { status: 404 });
@@ -193,7 +193,7 @@ export class MockHttpServer {
     return Response.json(results);
   }
 
-  private async handleReadV2(req: Request): Promise<Response> {
+  private async handleRead(req: Request): Promise<Response> {
     let body: unknown;
     try {
       body = await req.json();

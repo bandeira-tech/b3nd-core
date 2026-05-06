@@ -1427,17 +1427,15 @@ Deno.test({
     });
 
     const abort = new AbortController();
-    const results: { uri: string; data: unknown }[] = [];
+    const seen: string[] = [];
 
     // Start observing in background
     const done = (async () => {
       for await (
-        const result of rig.observe(["mutable://open/wasub/:key"], abort.signal)
+        const ev of rig.observe(["mutable://open/wasub/:key"], abort.signal)
       ) {
-        if (result.success && result.record) {
-          results.push({ uri: result.uri!, data: result.record.data });
-        }
-        if (results.length >= 2) abort.abort();
+        seen.push(ev.uri);
+        if (seen.length >= 2) abort.abort();
       }
     })();
 
@@ -1447,9 +1445,7 @@ Deno.test({
 
     await done;
 
-    assertEquals(results.length, 2);
-    assertEquals(results[0].uri, "mutable://open/wasub/a");
-    assertEquals(results[1].uri, "mutable://open/wasub/b");
+    assertEquals(seen, ["mutable://open/wasub/a", "mutable://open/wasub/b"]);
   },
 });
 
@@ -1502,7 +1498,7 @@ Deno.test({
           abort.signal,
         )
       ) {
-        if (r.success && r.uri) seen.push(r.uri);
+        seen.push(r.uri);
         if (seen.length >= 2) abort.abort();
       }
     })();
@@ -2017,18 +2013,20 @@ Deno.test({
         },
       });
 
-      // 3. Observe a pattern via the rig (routes to HttpClient SSE)
+      // 3. Observe a pattern via the rig (routes to HttpClient SSE).
+      // INV-style: get the uri, then read it for the payload.
       const received: { uri: string; data: unknown }[] = [];
 
       const done = (async () => {
         for await (
-          const result of subscriberRig.observe(
+          const ev of subscriberRig.observe(
             ["mutable://open/market/:msgId"],
             subscriberAbort.signal,
           )
         ) {
-          if (result.success && result.record) {
-            received.push({ uri: result.uri!, data: result.record.data });
+          const [r] = await subscriberRig.read([ev.uri]);
+          if (r?.success && r.record) {
+            received.push({ uri: ev.uri, data: r.record.data });
           }
           if (received.length >= 2) subscriberAbort.abort();
         }

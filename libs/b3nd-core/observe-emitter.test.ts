@@ -54,20 +54,14 @@ Deno.test("ObserveEmitter - yields on matching write", async () => {
   assertEquals(seen, ["mutable://app/x"]);
 });
 
-Deno.test("ObserveEmitter - deletes surface as data: null", async () => {
+Deno.test("ObserveEmitter - deletes surface as a uri notification", async () => {
   const bus = new Harness();
   const ac = new AbortController();
 
-  const seen: {
-    uri?: string;
-    data: unknown;
-  }[] = [];
+  const seen: string[] = [];
   const done = (async () => {
     for await (const r of bus.observe(["mutable://app/*"], ac.signal)) {
-      seen.push({
-        uri: r.uri,
-        data: r.record?.data,
-      });
+      seen.push(r.uri);
       ac.abort();
     }
   })();
@@ -76,29 +70,9 @@ Deno.test("ObserveEmitter - deletes surface as data: null", async () => {
   bus.emitDeletes(["mutable://app/gone"]);
   await done;
 
-  assertEquals(seen, [
-    { uri: "mutable://app/gone", data: null },
-  ]);
-});
-
-Deno.test("ObserveEmitter - payloads carry conserved quantities to the observer", async () => {
-  const bus = new Harness();
-  const ac = new AbortController();
-
-  const seen: unknown[] = [];
-  const done = (async () => {
-    for await (const r of bus.observe(["tokens/:id"], ac.signal)) {
-      if (r.record) seen.push(r.record.data);
-      ac.abort();
-    }
-  })();
-
-  await Promise.resolve();
-  // Conserved quantities live inside the payload now.
-  bus.emit("tokens/42", { values: { fire: 100, water: 50 } });
-  await done;
-
-  assertEquals(seen, [{ values: { fire: 100, water: 50 } }]);
+  // INV-style: the observer learns "this uri changed" — the consumer
+  // reads the uri to discover it's now gone (or its current state).
+  assertEquals(seen, ["mutable://app/gone"]);
 });
 
 Deno.test("ObserveEmitter - non-matching URIs are ignored", async () => {
@@ -233,10 +207,10 @@ Deno.test("ObserveEmitter - 100 rapid emits arrive in order", async () => {
   const ac = new AbortController();
   const N = 100;
 
-  const seen: number[] = [];
+  const seen: string[] = [];
   const done = (async () => {
     for await (const r of bus.observe(["stress/:i"], ac.signal)) {
-      seen.push(r.record?.data as number);
+      seen.push(r.uri);
       if (seen.length >= N) ac.abort();
     }
   })();
@@ -246,7 +220,7 @@ Deno.test("ObserveEmitter - 100 rapid emits arrive in order", async () => {
 
   await done;
   assertEquals(seen.length, N);
-  for (let i = 0; i < N; i++) assertEquals(seen[i], i);
+  for (let i = 0; i < N; i++) assertEquals(seen[i], `stress/${i}`);
 });
 
 // ── Abort semantics: drain queued events before exiting ───────────────

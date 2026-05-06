@@ -12,6 +12,7 @@
 
 import type {
   CodeHandler,
+  ObserveEvent,
   Output,
   Program,
   ProgramResult,
@@ -758,11 +759,11 @@ export class Rig {
    * }
    * ```
    */
-  async *observe<T = unknown>(
+  async *observe(
     urls: string[],
     signal: AbortSignal,
-  ): AsyncIterable<ReadResult<T>> {
-    yield* this._dispatch.observe<T>(urls, signal);
+  ): AsyncIterable<ObserveEvent> {
+    yield* this._dispatch.observe(urls, signal);
   }
 
   // ── Inspection ──
@@ -985,10 +986,10 @@ function createRouteDispatch(
       return allResults;
     },
 
-    async *observe<T = unknown>(
+    async *observe(
       urls: string[],
       signal: AbortSignal,
-    ): AsyncIterable<ReadResult<T>> {
+    ): AsyncIterable<ObserveEvent> {
       // Group urls by the first connection that accepts them so each
       // connection sees the subset it owns. No aggregation across
       // connections — that is the aggregating client's job.
@@ -1002,7 +1003,7 @@ function createRouteDispatch(
         groups.set(conn, arr);
       }
       const streams = [...groups.entries()].map(([c, us]) =>
-        c.client.observe<T>(us, signal)
+        c.client.observe(us, signal)
       );
       yield* mergeStreams(streams, signal);
     },

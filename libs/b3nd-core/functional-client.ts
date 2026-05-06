@@ -8,6 +8,7 @@
 
 import type {
   Message,
+  ObserveEvent,
   ProtocolInterfaceNode,
   ReadResult,
   ReceiveResult,
@@ -21,10 +22,10 @@ import type {
 export interface FunctionalClientConfig {
   receive?: (msgs: Message[]) => Promise<ReceiveResult[]>;
   read?: <T = unknown>(urls: string[]) => Promise<ReadResult<T>[]>;
-  observe?: <T = unknown>(
+  observe?: (
     urls: string[],
     signal: AbortSignal,
-  ) => AsyncIterable<ReadResult<T>>;
+  ) => AsyncIterable<ObserveEvent>;
   status?: () => Promise<StatusResult>;
 }
 
@@ -71,12 +72,12 @@ export class FunctionalClient implements ProtocolInterfaceNode {
     );
   }
 
-  async *observe<T = unknown>(
+  async *observe(
     urls: string[],
     signal: AbortSignal,
-  ): AsyncIterable<ReadResult<T>> {
+  ): AsyncIterable<ObserveEvent> {
     if (this.config.observe) {
-      yield* this.config.observe<T>(urls, signal);
+      yield* this.config.observe(urls, signal);
     }
     // No observe config → empty stream (never yields)
   }

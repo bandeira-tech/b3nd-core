@@ -3,21 +3,15 @@
  * ObserveEmitter — the shared listener + async-iterator machinery used by
  * clients (SimpleClient, DataStoreClient) to expose `observe()`.
  *
- * Observe is a client concern. Clients orchestrate writes and deletes —
- * they know when state changes. Stores are mechanical and should not
- * carry observe responsibility.
+ * Observe is INV-style notification: each successful write or delete
+ * emits the uri only; consumers read the uri to learn the new state.
  *
- * Events:
- *   - write  → `_emit(uri, data)`
- *   - delete → `_emit(uri, null)` (via `_emitDeletes([uri, ...])`)
- *
- * `observe(urls, signal)` accepts the read-url grammar. The routing
- * key (uri portion) of each url is used as the pattern; the query
- * string is reserved for fn-specific stream shaping handled by
- * subclasses that override this method.
+ * `observe(urls, signal)` accepts the read-url grammar but only uses
+ * each url's routing key (the uri portion) for pattern matching. The
+ * query string is ignored at the framework level.
  */
 import { matchPattern } from "./match-pattern.ts";
-import type { ReadResult } from "./types.ts";
+import type { ObserveEvent } from "./types.ts";
 import { routingKey } from "./url.ts";
 
 export type ObserveListener = (
@@ -30,14 +24,17 @@ export type ObserveListener = (
  * for observing URI-pattern changes.
  *
  * Subclasses call `_emit(uri, data)` on successful writes and
- * `_emitDeletes(uris)` on successful deletes. `observe(pattern, signal)`
- * is a plug-and-play `ProtocolInterfaceNode.observe` implementation.
+ * `_emitDeletes(uris)` on successful deletes. The emitter ignores
+ * `data` for INV-style notifications — observers receive only the
+ * uri and read it themselves.
  */
 export class ObserveEmitter {
   protected _listeners: Set<ObserveListener> = new Set<ObserveListener>();
 
   /**
-   * Notify all listeners of a URI change.
+   * Notify all listeners of a URI change. `data` is accepted for
+   * compatibility with subclasses that may reuse the listener bus,
+   * but it is not surfaced to observe iterators.
    */
   protected _emit(
     uri: string,
@@ -52,38 +49,32 @@ export class ObserveEmitter {
     }
   }
 
-  /** Notify all listeners that each URI was deleted (data = null). */
+  /** Notify all listeners that each URI was deleted. */
   protected _emitDeletes(uris: readonly string[]): void {
     for (const uri of uris) this._emit(uri, null);
   }
 
   /**
-   * Async iterator yielding `ReadResult` for each URI change matching
-   * any of the input urls. Runs until `signal` aborts.
-   *
-   * Deletes surface as `{ success: true, uri, record: { data: null } }`.
+   * Async iterator yielding an `ObserveEvent` for each URI change
+   * matching any of the input urls. Runs until `signal` aborts.
    *
    * The listener stays registered for the lifetime of the iteration;
    * events fired while the consumer is processing a yielded value are
    * buffered in a per-iterator queue so nothing is dropped across the
    * yield boundary.
    */
-  async *observe<T = unknown>(
+  async *observe(
     urls: string[],
     signal: AbortSignal,
-  ): AsyncIterable<ReadResult<T>> {
+  ): AsyncIterable<ObserveEvent> {
     const patterns = urls.map((u) => routingKey(u).split("/"));
-    const queue: ReadResult<T>[] = [];
+    const queue: ObserveEvent[] = [];
     let wake: (() => void) | null = null;
 
-    const listener: ObserveListener = (uri, data) => {
+    const listener: ObserveListener = (uri, _data) => {
       const matched = patterns.some((segs) => matchPattern(segs, uri) !== null);
       if (matched) {
-        queue.push({
-          success: true,
-          uri,
-          record: { data: data as T },
-        });
+        queue.push({ uri });
         const w = wake;
         if (w) {
           wake = null;
@@ -105,10 +96,8 @@ export class ObserveEmitter {
 
     try {
       while (true) {
-        // Drain everything buffered so far.
         while (queue.length > 0) yield queue.shift()!;
         if (signal.aborted) return;
-        // Nothing buffered — wait for an event or abort.
         await new Promise<void>((resolve) => {
           wake = resolve;
         });
