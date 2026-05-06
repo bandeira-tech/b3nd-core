@@ -91,7 +91,7 @@ export function runSharedSuite(
 
       assertEquals(results[0].accepted, true);
 
-      const readResults = await client.read("store://users/alice/profile");
+      const readResults = await client.read(["store://users/alice/profile"]);
 
       assertEquals(readResults.length, 1);
       assertEquals(readResults[0].success, true);
@@ -108,7 +108,7 @@ export function runSharedSuite(
     fn: async () => {
       const client = await Promise.resolve(factories.happy());
 
-      const readResults = await client.read("store://users/nobody/profile");
+      const readResults = await client.read(["store://users/nobody/profile"]);
 
       assertEquals(readResults.length, 1);
       assertEquals(readResults[0].success, false);
@@ -129,7 +129,7 @@ export function runSharedSuite(
       ]);
       assertEquals(results[0].accepted, true);
 
-      const readResults = await client.read("store://users/scalar-string/data");
+      const readResults = await client.read(["store://users/scalar-string/data"]);
       assertEquals(readResults.length, 1);
       assertEquals(
         readResults[0].success,
@@ -151,7 +151,7 @@ export function runSharedSuite(
       ]);
       assertEquals(results[0].accepted, true);
 
-      const readResults = await client.read("store://users/scalar-number/data");
+      const readResults = await client.read(["store://users/scalar-number/data"]);
       assertEquals(readResults.length, 1);
       assertEquals(
         readResults[0].success,
@@ -173,7 +173,7 @@ export function runSharedSuite(
       ]);
       assertEquals(results[0].accepted, true);
 
-      const readResults = await client.read("store://users/scalar-bool/data");
+      const readResults = await client.read(["store://users/scalar-bool/data"]);
       assertEquals(readResults.length, 1);
       assertEquals(
         readResults[0].success,
@@ -195,7 +195,7 @@ export function runSharedSuite(
       ]);
       assertEquals(results[0].accepted, true);
 
-      const readResults = await client.read("store://users/scalar-null/data");
+      const readResults = await client.read(["store://users/scalar-null/data"]);
       assertEquals(readResults.length, 1);
       assertEquals(
         readResults[0].success,
@@ -217,7 +217,7 @@ export function runSharedSuite(
       ]);
       assertEquals(results[0].accepted, true);
 
-      const readResults = await client.read("store://users/scalar-empty/data");
+      const readResults = await client.read(["store://users/scalar-empty/data"]);
       assertEquals(readResults.length, 1);
       assertEquals(
         readResults[0].success,
@@ -239,7 +239,7 @@ export function runSharedSuite(
       ]);
       assertEquals(results[0].accepted, true);
 
-      const readResults = await client.read("store://users/scalar-zero/data");
+      const readResults = await client.read(["store://users/scalar-zero/data"]);
       assertEquals(readResults.length, 1);
       assertEquals(
         readResults[0].success,
@@ -265,7 +265,7 @@ export function runSharedSuite(
       ]);
       assertEquals(results[0].accepted, true);
 
-      const readResults = await client.read("store://balance/alice/utxo-1");
+      const readResults = await client.read(["store://balance/alice/utxo-1"]);
       assertEquals(readResults.length, 1);
       assertEquals(readResults[0].success, true);
       assertEquals(readResults[0].record?.data, { values: { fire: 100 } });
@@ -286,7 +286,7 @@ export function runSharedSuite(
       ]);
       assertEquals(results[0].accepted, true);
 
-      const readResults = await client.read("store://balance/alice/utxo-2");
+      const readResults = await client.read(["store://balance/alice/utxo-2"]);
       assertEquals(readResults.length, 1);
       assertEquals(readResults[0].success, true);
       assertEquals(readResults[0].record?.data, {
@@ -399,7 +399,7 @@ export function runSharedSuite(
         msg([[`${prefix}/charlie/profile`, { name: "Charlie" }]]),
       ]);
 
-      const results = await client.read(`${prefix}/`);
+      const results = await client.read([`${prefix}/`]);
 
       assertEquals(
         results.length >= 3,
@@ -471,9 +471,9 @@ export function runSharedSuite(
           "Binary message should be accepted",
         );
 
-        const readResults = await client.read<Uint8Array>(
-          "store://files/test-image.png",
-        );
+        const readResults = await client.read<Uint8Array>([
+      "store://files/test-image.png",
+    ]);
 
         assertEquals(readResults.length, 1);
         assertEquals(
@@ -526,9 +526,9 @@ export function runSharedSuite(
           "Large binary message should be accepted",
         );
 
-        const readResults = await client.read<Uint8Array>(
-          "store://files/large-file.bin",
-        );
+        const readResults = await client.read<Uint8Array>([
+      "store://files/large-file.bin",
+    ]);
 
         assertEquals(readResults.length, 1);
         assertEquals(
@@ -578,7 +578,7 @@ export function runSharedSuite(
         }]]),
       ]);
 
-      const readResults = await client.read("store://users/overwrite/profile");
+      const readResults = await client.read(["store://users/overwrite/profile"]);
       assertEquals(readResults.length, 1);
       assertEquals(readResults[0].success, true);
       assertEquals(readResults[0].record?.data, {
@@ -605,7 +605,7 @@ export function runSharedSuite(
         }]]),
       ]);
 
-      const readResults = await client.read("store://balance/overwrite/utxo");
+      const readResults = await client.read(["store://balance/overwrite/utxo"]);
       assertEquals(readResults[0].success, true);
       assertEquals(readResults[0].record?.data, {
         values: { fire: 75, usd: 25 },
@@ -652,7 +652,7 @@ export function runSharedSuite(
         assertEquals(results[0].accepted, false);
         assertEquals(typeof results[0].error, "string");
 
-        const readResults = await client.read("store://users/test/data");
+        const readResults = await client.read(["store://users/test/data"]);
         assertEquals(readResults.length, 1);
         assertEquals(readResults[0].success, false);
       },

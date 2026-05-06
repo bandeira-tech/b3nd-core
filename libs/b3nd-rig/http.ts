@@ -8,10 +8,10 @@
  * The rig stays pure (orchestration only). Transport is external.
  *
  * Routes:
- *   GET  /api/v1/status            → rig.status()
- *   POST /api/v1/receive           → rig.receive([[uri, payload]])
- *   GET  /api/v1/read/:uri         → rig.read(uri)
- *   GET  /api/v1/observe/:pattern   → SSE stream from rig events
+ *   GET  /api/v1/status                → rig.status()
+ *   POST /api/v1/receive               → rig.receive([[uri, payload]])
+ *   POST /api/v2/read                  → rig.read(urls)   body: { urls }
+ *   GET  /api/v1/observe/:pattern       → SSE stream from rig events
  *
  * @example
  * ```ts
@@ -33,6 +33,7 @@
  */
 
 import { decodeBase64 } from "../b3nd-core/encoding.ts";
+import { encodeBinaryForJson } from "../b3nd-core/binary.ts";
 import type { Rig } from "./rig.ts";
 import type { RigEvent } from "./events.ts";
 
@@ -80,34 +81,6 @@ function extractUri(path: string, prefix: string): string | null {
     ? `${protocol}://${domain}/${subpath}`
     : `${protocol}://${domain}`;
   return hasTrailingSlash ? `${uri}/` : uri;
-}
-
-/** Guess MIME type from URI file extension. */
-function getMimeType(uri: string): string {
-  const ext = uri.split(".").pop()?.toLowerCase();
-  const types: Record<string, string> = {
-    html: "text/html",
-    css: "text/css",
-    js: "application/javascript",
-    json: "application/json",
-    png: "image/png",
-    jpg: "image/jpeg",
-    jpeg: "image/jpeg",
-    gif: "image/gif",
-    svg: "image/svg+xml",
-    webp: "image/webp",
-    woff2: "font/woff2",
-    woff: "font/woff",
-    ttf: "font/ttf",
-    pdf: "application/pdf",
-    wasm: "application/wasm",
-    ico: "image/x-icon",
-    txt: "text/plain",
-    xml: "application/xml",
-    mp3: "audio/mpeg",
-    mp4: "video/mp4",
-  };
-  return types[ext ?? ""] ?? "application/octet-stream";
 }
 
 // ── Responses ──
@@ -238,50 +211,31 @@ export function httpApi(
       return json(results, allAccepted ? 200 : 400);
     }
 
-    // ── Read ──
-    // Supports both exact reads and trailing-slash list reads
-    if (method === "GET" && path.startsWith("/api/v1/read/")) {
-      const uri = extractUri(path, "/api/v1/read/");
-      if (!uri) return json({ error: "Invalid URI" }, 400);
-
-      const results = await rig.read(uri);
-
-      // Trailing slash = list mode → return all results
-      if (uri.endsWith("/")) {
-        return json(results);
+    // ── Read (batch) ──
+    // Body: `{ urls: string[] }`. Returns `ReadResult[]` directly. The
+    // server forwards each url to `rig.read`; the executing client owns
+    // the `fn`/params interpretation. Binary `record.data` is wrapped
+    // for JSON transport via `encodeBinaryForJson`; the client undoes
+    // it with `decodeBinaryFromJson`.
+    if (method === "POST" && path === "/api/v2/read") {
+      let body: unknown;
+      try {
+        body = await req.json();
+      } catch {
+        return json({ error: "Invalid JSON body" }, 400);
       }
-
-      // Single read
-      const res = results[0];
-      if (!res?.success || !res.record) {
-        return json({ error: res?.error || "Not found" }, 404);
+      const urls = (body as { urls?: unknown })?.urls;
+      if (!Array.isArray(urls) || !urls.every((u) => typeof u === "string")) {
+        return json({ error: "Expected { urls: string[] }" }, 400);
       }
-      // Binary data → raw bytes
-      if (res.record.data instanceof Uint8Array) {
-        return new Response(res.record.data as unknown as BodyInit, {
-          status: 200,
-          headers: {
-            "Content-Type": getMimeType(uri),
-            "Content-Length": res.record.data.length.toString(),
-          },
-        });
+      const results = await rig.read(urls as string[]);
+      // Encode any binary payload into a JSON-safe wrapper.
+      for (const r of results) {
+        if (r.success && r.record) {
+          r.record.data = encodeBinaryForJson(r.record.data);
+        }
       }
-      return json(res.record);
-    }
-
-    // ── List (convenience alias for read with trailing slash) ──
-    if (method === "GET" && path.startsWith("/api/v1/list/")) {
-      const uri = extractUri(path, "/api/v1/list/");
-      if (!uri) return json({ error: "Invalid URI" }, 400);
-      const listUri = uri.endsWith("/") ? uri : `${uri}/`;
-      const results = await rig.read(listUri);
-      // Return as array of { uri, record } for backwards compat
-      return json({
-        success: true,
-        data: results
-          .filter((r) => r.success)
-          .map((r) => ({ uri: r.uri, ...r.record })),
-      });
+      return json(results);
     }
 
     // ── SSE Observe ──
@@ -317,7 +271,7 @@ export function httpApi(
           (async () => {
             try {
               const listUri = uri.endsWith("/") ? uri : `${uri}/`;
-              const results = await rig.read(listUri);
+              const results = await rig.read([listUri]);
               for (const item of results) {
                 if (sub.closed) break;
                 if (!item.success || !item.record || !item.uri) continue;

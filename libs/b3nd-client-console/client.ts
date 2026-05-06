@@ -61,10 +61,9 @@ export class ConsoleClient implements ProtocolInterfaceNode {
     return Promise.resolve(results);
   }
 
-  read<T = unknown>(uris: string | string[]): Promise<ReadResult<T>[]> {
-    const uriList = Array.isArray(uris) ? uris : [uris];
+  read<T = unknown>(urls: string[]): Promise<ReadResult<T>[]> {
     return Promise.resolve(
-      uriList.map(() => ({
+      urls.map(() => ({
         success: false as const,
         error: "ConsoleClient is write-only",
       })),
@@ -72,7 +71,7 @@ export class ConsoleClient implements ProtocolInterfaceNode {
   }
 
   observe<T = unknown>(
-    _pattern: string,
+    _urls: string[],
     _signal?: AbortSignal,
   ): AsyncIterable<ReadResult<T>> {
     return {

@@ -99,10 +99,8 @@ export function floodImpl(
 
     // ── read ─────────────────────────────────────────────────────────
 
-    async read<T = unknown>(
-      uris: string | string[],
-    ): Promise<ReadResult<T>[]> {
-      const uriList = Array.isArray(uris) ? uris : [uris];
+    async read<T = unknown>(urls: string[]): Promise<ReadResult<T>[]> {
+      const uriList = urls;
       if (uriList.length === 0) return [];
 
       let lastErr: string | undefined;
@@ -123,7 +121,7 @@ export function floodImpl(
     // ── observe ──────────────────────────────────────────────────────
 
     async *observe<T = unknown>(
-      pattern: string,
+      urls: string[],
       signal: AbortSignal,
     ): AsyncIterable<ReadResult<T>> {
       const queue: ReadResult<T>[] = [];
@@ -131,7 +129,7 @@ export function floodImpl(
 
       const forwarders = peers.map(async (p) => {
         try {
-          for await (const r of p.client.observe<T>(pattern, signal)) {
+          for await (const r of p.client.observe<T>(urls, signal)) {
             queue.push(r);
             const w = wake;
             if (w) {

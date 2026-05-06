@@ -20,13 +20,8 @@ import type {
   ReceiveResult,
   StatusResult,
 } from "../b3nd-core/types.ts";
-import type {
-  RigConfig,
-  RigInfo,
-  WatchAllOptions,
-  WatchAllSnapshot,
-  WatchOptions,
-} from "./types.ts";
+import { buildUrl, parseUrl, routingKey } from "../b3nd-core/url.ts";
+import type { RigConfig, RigInfo } from "./types.ts";
 import type { ReadCtx, ReceiveCtx, RigHooks, SendCtx } from "./hooks.ts";
 import { resolveHooks, runAfter, runBefore, runOnError } from "./hooks.ts";
 import type { EventHandler, RigEventName } from "./events.ts";
@@ -154,8 +149,8 @@ export class Rig {
     const d = this._dispatch;
     return {
       receive: (msgs) => d.receive(msgs),
-      read: (uris) => d.read(uris),
-      observe: (pattern, signal) => d.observe(pattern, signal),
+      read: (urls) => d.read(urls),
+      observe: (urls, signal) => d.observe(urls, signal),
       status: () => d.status(),
     };
   }
@@ -654,7 +649,7 @@ export class Rig {
   /** Internal read helper bound to the dispatch read interface. */
   private _readFn(): <T = unknown>(u: string) => Promise<ReadResult<T>> {
     return async <T = unknown>(u: string) => {
-      const results = await this._dispatch.read<T>(u);
+      const results = await this._dispatch.read<T>([u]);
       return results[0] ??
         { success: false, error: "No results" } as ReadResult<T>;
     };
@@ -679,32 +674,38 @@ export class Rig {
   // ── Observation ──
 
   /**
-   * Read data from one or more URIs.
-   *
-   * - Single URI: returns array with one result
-   * - Multiple URIs: returns array with one result per URI
-   * - Trailing slash: lists all items under path
+   * Read a batch of urls. Sequential dispatch — each url goes to the
+   * first connection whose route accepts its routing key. See `url.ts`
+   * for the grammar.
    */
-  async read<T = unknown>(uris: string | string[]): Promise<ReadResult<T>[]> {
-    const uriList = Array.isArray(uris) ? uris : [uris];
-
-    // Before-hook on each URI
-    const finalUris: string[] = [];
-    for (const uri of uriList) {
-      const ctx: ReadCtx = { uri };
+  async read<T = unknown>(urls: string[]): Promise<ReadResult<T>[]> {
+    // Before-hook per url. Hooks see the parsed shape and may rewrite
+    // any field; we re-serialize from the returned ctx before dispatch.
+    const finalUrls: string[] = [];
+    const ctxs: ReadCtx[] = [];
+    for (const url of urls) {
+      const parsed = parseUrl(url);
+      const ctx: ReadCtx = { url, ...parsed };
       const readCtx = await runBefore(this._hooks.beforeRead, ctx);
-      finalUris.push(readCtx.uri);
+      const finalUrl = buildUrl({
+        uri: readCtx.uri,
+        fn: readCtx.fn,
+        params: readCtx.params,
+        ext: readCtx.ext,
+      });
+      finalUrls.push(finalUrl);
+      ctxs.push({ ...readCtx, url: finalUrl });
     }
 
     // Execute
     let results: ReadResult<T>[];
     try {
-      results = await this._dispatch.read<T>(finalUris);
+      results = await this._dispatch.read<T>(finalUrls);
     } catch (err) {
-      for (const uri of finalUris) {
+      for (const ctx of ctxs) {
         this._events.emit("read:error", {
           op: "read",
-          uri,
+          uri: ctx.uri,
           error: err instanceof Error ? err.message : String(err),
           ts: Date.now(),
         });
@@ -712,12 +713,14 @@ export class Rig {
       throw err;
     }
 
-    // After-hook + events per result
+    // After-hook + events per result. Each result is paired to the
+    // request that produced it (clamping when ls expands one input
+    // into many results).
     for (let i = 0; i < results.length; i++) {
       const result = results[i];
-      const requestUri = finalUris[Math.min(i, finalUris.length - 1)];
-      const uri = result.uri ?? requestUri;
-      await runAfter(this._hooks.afterRead, { uri }, result);
+      const ctx = ctxs[Math.min(i, ctxs.length - 1)];
+      const uri = result.uri ?? ctx.uri;
+      await runAfter(this._hooks.afterRead, ctx, result);
 
       if (result.success) {
         this._events.emit("read:success", {
@@ -739,62 +742,6 @@ export class Rig {
     return results;
   }
 
-  /**
-   * Read just the data from a single URI, returning `null` if not found.
-   */
-  async readData<T = unknown>(uri: string): Promise<T | null> {
-    const results = await this.read<T>(uri);
-    const result = results[0];
-    return result?.success && result.record ? result.record.data : null;
-  }
-
-  /**
-   * Read data from a single URI, throwing if not found.
-   */
-  async readOrThrow<T = unknown>(uri: string): Promise<T> {
-    const results = await this.read<T>(uri);
-    const result = results[0];
-    if (!result?.success || !result.record) {
-      throw new Error(
-        `Rig.readOrThrow: no data at ${uri}${
-          result?.error ? ` (${result.error})` : ""
-        }`,
-      );
-    }
-    return result.record.data;
-  }
-
-  /**
-   * Check if data exists at a URI.
-   */
-  async exists(uri: string): Promise<boolean> {
-    const results = await this.read(uri);
-    return results[0]?.success ?? false;
-  }
-
-  /**
-   * Count items under a URI prefix.
-   * Uses trailing-slash read to list items.
-   */
-  async count(uri: string): Promise<number> {
-    const prefix = uri.endsWith("/") ? uri : `${uri}/`;
-    const results = await this.read(prefix);
-    return results.filter((r) => r.success).length;
-  }
-
-  /**
-   * List URIs under a prefix — convenience for read with trailing slash.
-   * Returns URI strings extracted from successful results.
-   */
-  private async listData(prefix: string): Promise<string[]> {
-    const listUri = prefix.endsWith("/") ? prefix : `${prefix}/`;
-    const results = await this.read(listUri);
-    return results
-      .filter((r) => r.success)
-      .map((r) => r.uri ?? "")
-      .filter(Boolean);
-  }
-
   // ── Observe (client-backed streaming) ──
 
   /**
@@ -812,23 +759,10 @@ export class Rig {
    * ```
    */
   async *observe<T = unknown>(
-    pattern: string,
+    urls: string[],
     signal: AbortSignal,
   ): AsyncIterable<ReadResult<T>> {
-    // Strip :param and * segments to get the matchable prefix
-    const segments = pattern.split("/");
-    const matchUri = segments
-      .filter((s) => !s.startsWith(":") && s !== "*")
-      .join("/");
-
-    // Find the first observe-route that accepts this prefix
-    for (const conn of this._observeRoutes) {
-      if (conn.accepts(matchUri)) {
-        yield* conn.client.observe<T>(pattern, signal);
-        return;
-      }
-    }
-    // No observe route accepts — empty stream
+    yield* this._dispatch.observe<T>(urls, signal);
   }
 
   // ── Inspection ──
@@ -932,160 +866,71 @@ export class Rig {
   reaction(pattern: string, handler: ReactionHandler): () => void {
     return this._reactors.add(pattern, handler);
   }
-
-  // ── Reactive ──
-
-  /**
-   * Watch a URI for changes, yielding new values as they appear.
-   *
-   * Polls the URI at `intervalMs` (default 1000ms) and yields the value
-   * whenever it changes. Uses JSON comparison for deduplication — only
-   * emits when the data actually differs from the previous read.
-   *
-   * Pass an `AbortSignal` to stop watching.
-   *
-   * @example
-   * ```typescript
-   * const abort = new AbortController();
-   *
-   * for await (const profile of rig.watch<UserProfile>(
-   *   "mutable://app/users/alice",
-   *   { intervalMs: 2000, signal: abort.signal },
-   * )) {
-   *   console.log("Profile updated:", profile);
-   * }
-   * ```
-   */
-  async *watch<T = unknown>(
-    uri: string,
-    options?: WatchOptions,
-  ): AsyncGenerator<T | null, void, unknown> {
-    const interval = options?.intervalMs ?? 1000;
-    const signal = options?.signal;
-
-    let lastJson: string | undefined;
-
-    while (!signal?.aborted) {
-      const value = await this.readData<T>(uri);
-      const json = JSON.stringify(value);
-
-      if (json !== lastJson) {
-        lastJson = json;
-        yield value;
-      }
-
-      // Wait for next poll or abort
-      await new Promise<void>((resolve) => {
-        const timer = setTimeout(resolve, interval);
-        if (signal) {
-          const onAbort = () => {
-            clearTimeout(timer);
-            resolve();
-          };
-          signal.addEventListener("abort", onAbort, { once: true });
-        }
-      });
-    }
-  }
-
-  /**
-   * Watch a URI prefix for collection-level changes.
-   *
-   * Polls the prefix, reads all items, and yields a snapshot whenever the
-   * collection changes — items added, removed, or modified. Useful for
-   * dashboards, lists, and any UI that renders a collection.
-   *
-   * @example
-   * ```typescript
-   * const abort = new AbortController();
-   *
-   * for await (const snapshot of rig.watchAll<UserProfile>(
-   *   "mutable://app/users",
-   *   { intervalMs: 2000, signal: abort.signal },
-   * )) {
-   *   console.log(`${snapshot.items.size} users`);
-   *   console.log("Added:", snapshot.added);
-   *   console.log("Removed:", snapshot.removed);
-   *   console.log("Changed:", snapshot.changed);
-   * }
-   * ```
-   */
-  async *watchAll<T = unknown>(
-    prefix: string,
-    options?: WatchAllOptions,
-  ): AsyncGenerator<WatchAllSnapshot<T>, void, unknown> {
-    const interval = options?.intervalMs ?? 1000;
-    const signal = options?.signal;
-
-    let lastItems = new Map<string, string>(); // uri → JSON
-
-    while (!signal?.aborted) {
-      const listPrefix = prefix.endsWith("/") ? prefix : `${prefix}/`;
-      const results = await this.read<T>(listPrefix);
-      const items = new Map<string, T>();
-      for (const r of results) {
-        if (r.success && r.record && r.uri) {
-          items.set(r.uri, r.record.data);
-        }
-      }
-      const currentJson = new Map<string, string>();
-      for (const [uri, data] of items) {
-        currentJson.set(uri, JSON.stringify(data));
-      }
-
-      // Diff against previous
-      const added: string[] = [];
-      const removed: string[] = [];
-      const changed: string[] = [];
-
-      for (const uri of currentJson.keys()) {
-        if (!lastItems.has(uri)) {
-          added.push(uri);
-        } else if (lastItems.get(uri) !== currentJson.get(uri)) {
-          changed.push(uri);
-        }
-      }
-      for (const uri of lastItems.keys()) {
-        if (!currentJson.has(uri)) {
-          removed.push(uri);
-        }
-      }
-
-      // Emit if anything changed (or on first poll)
-      if (
-        lastItems.size === 0 || added.length > 0 || removed.length > 0 ||
-        changed.length > 0
-      ) {
-        yield { items, added, removed, changed };
-      }
-
-      lastItems = currentJson;
-
-      // Wait for next poll or abort
-      await new Promise<void>((resolve) => {
-        const timer = setTimeout(resolve, interval);
-        if (signal) {
-          const onAbort = () => {
-            clearTimeout(timer);
-            resolve();
-          };
-          signal.addEventListener("abort", onAbort, { once: true });
-        }
-      });
-    }
-  }
 }
 
 // ── Init helpers ──
+
+/**
+ * Merge a set of `AsyncIterable`s into one stream. Aborts when `signal`
+ * fires; per-stream errors are swallowed (one broken peer should not
+ * tear down the merged stream).
+ */
+async function* mergeStreams<T>(
+  streams: AsyncIterable<T>[],
+  signal: AbortSignal,
+): AsyncIterable<T> {
+  if (streams.length === 0) return;
+  const queue: T[] = [];
+  let wake: (() => void) | null = null;
+
+  const forwarders = streams.map(async (s) => {
+    try {
+      for await (const r of s) {
+        queue.push(r);
+        const w = wake;
+        if (w) {
+          wake = null;
+          w();
+        }
+      }
+    } catch {
+      // intentional
+    }
+  });
+
+  const onAbort = () => {
+    const w = wake;
+    if (w) {
+      wake = null;
+      w();
+    }
+  };
+  signal.addEventListener("abort", onAbort, { once: true });
+
+  try {
+    while (true) {
+      while (queue.length > 0) yield queue.shift()!;
+      if (signal.aborted) return;
+      await new Promise<void>((resolve) => {
+        wake = resolve;
+      });
+    }
+  } finally {
+    signal.removeEventListener("abort", onAbort);
+    await Promise.allSettled(forwarders);
+  }
+}
 
 /**
  * Build dispatch from per-op route arrays.
  *
  * Each operation flows through its dedicated route list:
  * - `receive`: broadcast to ALL matching connections in the receive route.
- * - `read`: first-match in declaration order; list reads (trailing slash)
- *   gather across every matching connection.
- * - `observe`: first-match in declaration order (client handles transport).
+ * - `read`: per url, first connection that accepts the routing key gets
+ *   the request — sequential, no aggregation. Aggregation across
+ *   sources is the job of an aggregating client (e.g. memcache+shards),
+ *   not the rig.
+ * - `observe`: per url, first connection that accepts wins.
  * - `status`: aggregate across unique clients seen on any route.
  */
 function createRouteDispatch(
@@ -1120,74 +965,46 @@ function createRouteDispatch(
       return results;
     },
 
-    async read<T = unknown>(uris: string | string[]): Promise<ReadResult<T>[]> {
-      const uriList = Array.isArray(uris) ? uris : [uris];
+    async read<T = unknown>(urls: string[]): Promise<ReadResult<T>[]> {
       const allResults: ReadResult<T>[] = [];
 
-      for (const uri of uriList) {
-        // Strip trailing slash for pattern matching (read patterns cover both)
-        const isList = uri.endsWith("/");
-        const matchUri = isList ? uri.slice(0, -1) : uri;
-
-        if (isList) {
-          // List reads: gather across every matching read-route connection.
-          const merged: ReadResult<T>[] = [];
-          let any = false;
-          for (const s of read) {
-            if (!s.accepts(matchUri)) continue;
-            any = true;
-            const part = await s.client.read<T>(uri);
-            merged.push(...part);
-          }
-          if (!any) {
-            allResults.push({
-              success: false,
-              error: `No read route accepts ${uri}`,
-            });
-          } else {
-            allResults.push(...merged);
-          }
-          continue;
-        }
-
-        // Point reads: first connection with a successful hit wins.
-        let found = false;
-        for (const s of read) {
-          if (!s.accepts(matchUri)) continue;
-          const results = await s.client.read<T>(uri);
-          if (results.length > 0 && results.some((r) => r.success)) {
-            allResults.push(...results);
-            found = true;
-            break;
-          }
-        }
-        if (!found) {
+      for (const url of urls) {
+        const key = routingKey(url);
+        const conn = read.find((s) => s.accepts(key));
+        if (!conn) {
           allResults.push({
             success: false,
-            error: `No read route has data for ${uri}`,
+            error: `No read route accepts ${key}`,
           });
+          continue;
         }
+        const part = await conn.client.read<T>([url]);
+        allResults.push(...part);
       }
 
       return allResults;
     },
 
     async *observe<T = unknown>(
-      pattern: string,
+      urls: string[],
       signal: AbortSignal,
     ): AsyncIterable<ReadResult<T>> {
-      // Strip :param and * segments to get the matchable prefix
-      const segments = pattern.split("/");
-      const matchUri = segments
-        .filter((s) => !s.startsWith(":") && s !== "*")
-        .join("/");
-
-      for (const conn of observe) {
-        if (conn.accepts(matchUri)) {
-          yield* conn.client.observe<T>(pattern, signal);
-          return;
-        }
+      // Group urls by the first connection that accepts them so each
+      // connection sees the subset it owns. No aggregation across
+      // connections — that is the aggregating client's job.
+      const groups = new Map<Connection, string[]>();
+      for (const url of urls) {
+        const key = routingKey(url);
+        const conn = observe.find((c) => c.accepts(key));
+        if (!conn) continue;
+        const arr = groups.get(conn) ?? [];
+        arr.push(url);
+        groups.set(conn, arr);
       }
+      const streams = [...groups.entries()].map(([c, us]) =>
+        c.client.observe<T>(us, signal)
+      );
+      yield* mergeStreams(streams, signal);
     },
 
     async status(): Promise<StatusResult> {
@@ -1203,16 +1020,17 @@ function createRouteDispatch(
       }
       const results = await Promise.all(unique.map((c) => c.status()));
       const allSchema = new Set<string>();
+      const allFns = new Set<string>();
       for (const r of results) {
-        if (r.schema) {
-          for (const k of r.schema) allSchema.add(k);
-        }
+        if (r.schema) for (const k of r.schema) allSchema.add(k);
+        if (r.fns) for (const f of r.fns) allFns.add(f);
       }
+      const fns = allFns.size > 0 ? [...allFns] : undefined;
       const unhealthy = results.find((r) => r.status === "unhealthy");
-      if (unhealthy) return { ...unhealthy, schema: [...allSchema] };
+      if (unhealthy) return { ...unhealthy, schema: [...allSchema], fns };
       const degraded = results.find((r) => r.status === "degraded");
-      if (degraded) return { ...degraded, schema: [...allSchema] };
-      return { status: "healthy", schema: [...allSchema] };
+      if (degraded) return { ...degraded, schema: [...allSchema], fns };
+      return { status: "healthy", schema: [...allSchema], fns };
     },
   };
 }

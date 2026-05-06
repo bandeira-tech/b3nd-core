@@ -17,17 +17,12 @@ export type {
   DeleteResult,
   HealthStatus,
   HttpClientConfig,
-  ListItem,
-  ListOptions,
-  ListResult,
   Message,
   Output,
   Program,
   ProgramResult,
   ProtocolInterfaceNode,
   ReadFn,
-  ReadMultiResult,
-  ReadMultiResultItem,
   ReadResult,
   ReceiveResult,
   StatusResult,
@@ -79,9 +74,6 @@ export type {
   RigConfig,
   RigInfo,
   RigRoutes,
-  WatchAllOptions,
-  WatchAllSnapshot,
-  WatchOptions,
 } from "./libs/b3nd-rig/types.ts";
 
 // OperationHandle

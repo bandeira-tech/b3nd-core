@@ -2,16 +2,24 @@ import { assertEquals, assertRejects } from "@std/assert";
 import type { ReadCtx } from "./hooks.ts";
 import { resolveHooks, runAfter, runBefore } from "./hooks.ts";
 
+const baseReadCtx = (uri: string): ReadCtx => ({
+  url: uri,
+  uri,
+  fn: uri.endsWith("/") ? "ls" : "read",
+  params: {},
+  ext: {},
+});
+
 // ── runBefore ──
 
 Deno.test("runBefore - null hook passes through", async () => {
-  const ctx: ReadCtx = { uri: "mutable://test" };
+  const ctx = baseReadCtx("mutable://test");
   const result = await runBefore(null, ctx);
   assertEquals(result, ctx);
 });
 
 Deno.test("runBefore - void return passes through", async () => {
-  const ctx: ReadCtx = { uri: "mutable://test" };
+  const ctx = baseReadCtx("mutable://test");
   const result = await runBefore(() => {}, ctx);
   assertEquals(result, ctx);
 });
@@ -23,7 +31,7 @@ Deno.test("runBefore - throw rejects operation", async () => {
         () => {
           throw new Error("denied");
         },
-        { uri: "mutable://test", data: {} },
+        baseReadCtx("mutable://test"),
       ),
     Error,
     "denied",
@@ -32,10 +40,8 @@ Deno.test("runBefore - throw rejects operation", async () => {
 
 Deno.test("runBefore - context replacement works", async () => {
   const result = await runBefore(
-    (_ctx: ReadCtx) => ({
-      ctx: { uri: "mutable://replaced" },
-    }),
-    { uri: "mutable://original" },
+    (_ctx: ReadCtx) => ({ ctx: baseReadCtx("mutable://replaced") }),
+    baseReadCtx("mutable://original"),
   );
   assertEquals(result.uri, "mutable://replaced");
 });
@@ -48,7 +54,7 @@ Deno.test("runBefore - async hook works", async () => {
           await new Promise((r) => setTimeout(r, 1));
           throw new Error("async deny");
         },
-        { uri: "mutable://test" } as ReadCtx,
+        baseReadCtx("mutable://test"),
       ),
     Error,
     "async deny",
@@ -60,7 +66,7 @@ Deno.test("runBefore - async hook works", async () => {
 Deno.test("runAfter - null hook completes", async () => {
   await runAfter(
     null,
-    { uri: "mutable://test" } as ReadCtx,
+    baseReadCtx("mutable://test"),
     { success: true, record: { values: {}, data: "hello" } },
   );
   // no error = pass
@@ -72,7 +78,7 @@ Deno.test("runAfter - observer sees the result", async () => {
     (_ctx: ReadCtx, result: unknown) => {
       seen.push(result);
     },
-    { uri: "mutable://test" },
+    baseReadCtx("mutable://test"),
     { success: true },
   );
   assertEquals(seen, [{ success: true }]);
@@ -85,7 +91,7 @@ Deno.test("runAfter - throw propagates to caller", async () => {
         () => {
           throw new Error("post-condition violated");
         },
-        { uri: "mutable://test" } as ReadCtx,
+        baseReadCtx("mutable://test"),
         { success: true },
       ),
     Error,
@@ -100,7 +106,7 @@ Deno.test("runAfter - async hook works", async () => {
       await new Promise((r) => setTimeout(r, 1));
       called = true;
     },
-    { uri: "mutable://test" } as ReadCtx,
+    baseReadCtx("mutable://test"),
     { original: true },
   );
   assertEquals(called, true);

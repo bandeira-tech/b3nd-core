@@ -65,8 +65,8 @@ Deno.test("flood.receive fans out to every peer", async () => {
   const results = await npi.receive([["mutable://shared/x", "hello"]]);
   assertEquals(results, [{ accepted: true }]);
 
-  const ra = await a.read("mutable://shared/x");
-  const rb = await b.read("mutable://shared/x");
+  const ra = await a.read(["mutable://shared/x"]);
+  const rb = await b.read(["mutable://shared/x"]);
   assertEquals(ra[0].record?.data, "hello");
   assertEquals(rb[0].record?.data, "hello");
 });
@@ -100,7 +100,7 @@ Deno.test("flood.read tries peers in order and returns the first hit", async () 
   await b.receive([["mutable://only/on/b", "B-has-it"]]);
   const npi = flood([peer(a, { id: "A" }), peer(b, { id: "B" })]);
 
-  const results = await npi.read("mutable://only/on/b");
+  const results = await npi.read(["mutable://only/on/b"]);
   assertEquals(results[0].success, true);
   assertEquals(results[0].record?.data, "B-has-it");
 });
@@ -116,13 +116,13 @@ Deno.test("flood.read falls through failing peers", async () => {
   await good.receive([["mutable://z", "ok"]]);
   const npi = flood([peer(broken, { id: "X" }), peer(good, { id: "Y" })]);
 
-  const results = await npi.read("mutable://z");
+  const results = await npi.read(["mutable://z"]);
   assertEquals(results[0].record?.data, "ok");
 });
 
 Deno.test("flood.read returns not-found when no peer has it", async () => {
   const npi = flood([peer(mem(), { id: "A" }), peer(mem(), { id: "B" })]);
-  const results = await npi.read("mutable://nope");
+  const results = await npi.read(["mutable://nope"]);
   assertEquals(results[0].success, false);
 });
 
@@ -136,7 +136,7 @@ Deno.test("flood.observe merges writes from every peer", async () => {
   const ac = new AbortController();
   const seen: string[] = [];
   const done = (async () => {
-    for await (const ev of npi.observe("mutable://shared/*", ac.signal)) {
+    for await (const ev of npi.observe(["mutable://shared/*"], ac.signal)) {
       if (ev.uri) seen.push(ev.uri);
       if (seen.length >= 2) ac.abort();
     }
@@ -157,7 +157,7 @@ Deno.test("flood.observe unwinds cleanly on abort", async () => {
   const ac = new AbortController();
   const done = (async () => {
     const seen: string[] = [];
-    for await (const _ of npi.observe("mutable://x/*", ac.signal)) {
+    for await (const _ of npi.observe(["mutable://x/*"], ac.signal)) {
       seen.push("yielded");
     }
     return seen;

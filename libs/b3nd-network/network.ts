@@ -108,7 +108,7 @@ async function runPeer(
     .filter((r): r is NonNullable<typeof r> => r !== undefined);
 
   try {
-    for await (const ev of peer.client.observe(pattern, signal)) {
+    for await (const ev of peer.client.observe([pattern], signal)) {
       if (signal.aborted) break;
       for await (const out of foldReceive(ev, hooks, peer, ctx)) {
         if (signal.aborted) break;

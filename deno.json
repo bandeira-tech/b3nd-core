@@ -5,6 +5,7 @@
   "exports": {
     ".": "./mod.ts",
     "./types": "./libs/b3nd-core/types.ts",
+    "./url": "./libs/b3nd-core/url.ts",
     "./encoding": "./libs/b3nd-core/encoding.ts",
     "./binary": "./libs/b3nd-core/binary.ts",
     "./hash": "./hash.ts",

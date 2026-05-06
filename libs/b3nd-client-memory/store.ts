@@ -29,6 +29,8 @@ import type {
   StoreEntry,
   StoreWriteResult,
 } from "../b3nd-core/types.ts";
+import type { ParsedUrl } from "../b3nd-core/url.ts";
+import { parseUrl } from "../b3nd-core/url.ts";
 
 type StorageNode<T = unknown> = {
   value?: { data: T };
@@ -106,14 +108,26 @@ export class MemoryStore implements Store {
 
   // ── Read ─────────────────────────────────────────────────────────
 
-  read<T = unknown>(uris: string[]): Promise<ReadResult<T>[]> {
+  read<T = unknown>(urls: string[]): Promise<ReadResult<T>[]> {
     const results: ReadResult<T>[] = [];
 
-    for (const uri of uris) {
-      if (uri.endsWith("/")) {
-        results.push(...this._list<T>(uri));
-      } else {
-        results.push(this._readOne<T>(uri));
+    for (const url of urls) {
+      const parsed = parseUrl(url);
+      switch (parsed.fn) {
+        case "read":
+          results.push(this._readOne<T>(parsed.uri));
+          break;
+        case "ls":
+          results.push(...this._list<T>(parsed));
+          break;
+        case "count":
+          results.push(this._count(parsed) as ReadResult<T>);
+          break;
+        default:
+          results.push({
+            success: false,
+            error: `MemoryStore: unsupported fn '${parsed.fn}'`,
+          });
       }
     }
 
@@ -141,7 +155,11 @@ export class MemoryStore implements Store {
     };
   }
 
-  private _list<T>(uri: string): ReadResult<T>[] {
+  /**
+   * Walk the prefix and collect leaves into `[uri, record]` pairs.
+   * Returns the raw entries; callers apply ls or count semantics.
+   */
+  private _walk(uri: string): { uri: string; record: { data: unknown } }[] {
     const { node, parts, program, path } = resolveTarget(uri, this.storage);
     let current: StorageNode | undefined = node;
 
@@ -150,31 +168,80 @@ export class MemoryStore implements Store {
       if (!current) return [];
     }
 
-    if (!current.children?.size) return [];
+    const out: { uri: string; record: { data: unknown } }[] = [];
+    const prefix = path.endsWith("/")
+      ? `${program}${path}`
+      : `${program}${path}/`;
 
-    const prefix = `${program}${path}`;
-    const results: ReadResult<T>[] = [];
-
-    function collectLeaves(node: StorageNode, currentUri: string) {
+    function collect(node: StorageNode, currentUri: string) {
       if (node.value !== undefined) {
-        results.push({
-          success: true,
-          uri: currentUri,
-          record: node.value as { data: T },
-        });
+        out.push({ uri: currentUri, record: node.value });
       }
       if (node.children) {
         for (const [key, child] of node.children) {
-          collectLeaves(child, `${currentUri}/${key}`);
+          collect(child, `${currentUri}/${key}`);
         }
       }
     }
 
-    for (const [key, child] of current.children) {
-      collectLeaves(child, `${prefix}${key}`);
+    if (current.children) {
+      for (const [key, child] of current.children) {
+        collect(child, `${prefix}${key}`);
+      }
+    } else if (current.value !== undefined) {
+      out.push({ uri: `${program}${path}`, record: current.value });
     }
 
-    return results;
+    return out;
+  }
+
+  private _list<T>(parsed: ParsedUrl): ReadResult<T>[] {
+    const { params } = parsed;
+    const reject = (msg: string): ReadResult<T>[] => [{
+      success: false,
+      error: `MemoryStore: ${msg}`,
+    }];
+
+    if (params.pattern !== undefined) {
+      return reject("pattern filter not supported");
+    }
+    if (params.sortBy !== undefined && params.sortBy !== "uri") {
+      return reject(`unsupported sortBy: ${params.sortBy}`);
+    }
+    const format = params.format ?? "full";
+    if (format !== "full" && format !== "uris") {
+      return reject(`unsupported format: ${format}`);
+    }
+
+    let entries = this._walk(parsed.uri);
+
+    if (params.sortBy === "uri") {
+      const dir = params.sortOrder === "desc" ? -1 : 1;
+      entries.sort((a, b) => a.uri.localeCompare(b.uri) * dir);
+    }
+
+    if (params.limit !== undefined) {
+      const page = params.page ?? 1;
+      const start = (page - 1) * params.limit;
+      entries = entries.slice(start, start + params.limit);
+    }
+
+    return entries.map((e): ReadResult<T> =>
+      format === "uris"
+        ? { success: true, uri: e.uri }
+        : { success: true, uri: e.uri, record: e.record as { data: T } }
+    );
+  }
+
+  private _count(parsed: ParsedUrl): ReadResult<number> {
+    if (parsed.params.pattern !== undefined) {
+      return {
+        success: false,
+        error: `MemoryStore: pattern filter not supported`,
+      };
+    }
+    const n = this._walk(parsed.uri).length;
+    return { success: true, record: { data: n } };
   }
 
   // ── Delete ───────────────────────────────────────────────────────
@@ -230,6 +297,7 @@ export class MemoryStore implements Store {
     return Promise.resolve({
       status: "healthy",
       schema: [...this.storage.keys()],
+      fns: ["read", "ls", "count"],
     });
   }
 

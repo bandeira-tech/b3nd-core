@@ -325,15 +325,15 @@ Deno.test("tellAndRead round-trip: A announces hash content, B pulls on demand",
 
     // Poll until B's local store has the pulled content.
     await until(async () => {
-      const r = await bLocal.read("hash://big");
+      const r = await bLocal.read(["hash://big"]);
       return r[0]?.success === true;
     });
-    const r = await bLocal.read("hash://big");
+    const r = await bLocal.read(["hash://big"]);
     assertEquals(r[0].record?.data, { bytes: "the full payload" });
 
     // And the announcement URI never reached B's local store — it was
     // consumed by the policy.
-    const invLanded = await bLocal.read("inv://hash://big");
+    const invLanded = await bLocal.read(["inv://hash://big"]);
     assertEquals(invLanded[0].success, false);
   } finally {
     await unbind();

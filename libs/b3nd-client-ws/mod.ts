@@ -271,62 +271,27 @@ export class WebSocketClient implements ProtocolInterfaceNode {
     }
   }
 
-  async read<T = unknown>(uris: string | string[]): Promise<ReadResult<T>[]> {
-    const uriList = Array.isArray(uris) ? uris : [uris];
-    const results: ReadResult<T>[] = [];
-
-    for (const uri of uriList) {
-      if (uri.endsWith("/")) {
-        results.push(...await this._list<T>(uri));
-      } else {
-        results.push(await this._readOne<T>(uri));
-      }
-    }
-
-    return results;
-  }
-
-  private async _readOne<T>(uri: string): Promise<ReadResult<T>> {
-    try {
-      const result = await this.sendRequest<ReadResult<T>>("read", {
-        uris: [uri],
-      });
-      // Server returns array for read — take the first item
-      const items = Array.isArray(result) ? result : [result];
-      const item = items[0];
-      if (item && item.success && item.record) {
-        // Server returns { data } — decode binary from data
-        item.record.data = decodeBinaryFromJson(item.record.data) as T;
-      }
-      return item || { success: false, error: "No result returned" };
-    } catch (error) {
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : String(error),
-      };
-    }
-  }
-
-  private async _list<T>(uri: string): Promise<ReadResult<T>[]> {
+  async read<T = unknown>(urls: string[]): Promise<ReadResult<T>[]> {
+    if (urls.length === 0) return [];
     try {
       const results = await this.sendRequest<ReadResult<T>[]>("read", {
-        uris: [uri],
+        urls,
       });
       const items = Array.isArray(results) ? results : [results];
       for (const item of items) {
         if (item.success && item.record) {
-          // Server returns { data } — decode binary from data
           item.record.data = decodeBinaryFromJson(item.record.data) as T;
         }
       }
       return items;
-    } catch {
-      return [];
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      return urls.map(() => ({ success: false, error: msg }));
     }
   }
 
   async *observe<T = unknown>(
-    _pattern: string,
+    _urls: string[],
     _signal: AbortSignal,
   ): AsyncIterable<ReadResult<T>> {
     // Not implemented — observe requires transport-specific support.

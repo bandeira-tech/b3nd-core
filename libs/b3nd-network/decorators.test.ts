@@ -56,7 +56,7 @@ Deno.test("bestEffort passes through read unchanged", async () => {
       }] as ReadResult<T>[]),
   });
   const wrapped = bestEffort(inner);
-  const r = await wrapped.read("mutable://x/1");
+  const r = await wrapped.read(["mutable://x/1"]);
   assertEquals(r[0].record?.data, "hit");
 });
 
@@ -78,7 +78,7 @@ Deno.test("bestEffort passes through observe unchanged (not a silent no-op)", as
 
   const ac = new AbortController();
   const seen: string[] = [];
-  for await (const r of wrapped.observe("*", ac.signal)) {
+  for await (const r of wrapped.observe(["*"], ac.signal)) {
     if (r.uri) seen.push(r.uri);
     break;
   }

@@ -22,7 +22,7 @@ Deno.test({
     assertEquals(results.length, 1);
     assertEquals(results[0].accepted, true);
 
-    const read = await client.read("mutable://app/config");
+    const read = await client.read(["mutable://app/config"]);
     assertEquals(read[0].record?.data, { theme: "dark" });
   },
 });
@@ -42,11 +42,11 @@ Deno.test({
     ]);
 
     // The envelope data is stored at the envelope URI
-    const envelope = await client.read("envelope://test/1");
+    const envelope = await client.read(["envelope://test/1"]);
     assertEquals(envelope[0].success, true);
 
     // But the output was NOT written — no fan-out
-    const output = await client.read("mutable://app/x");
+    const output = await client.read(["mutable://app/x"]);
     assertEquals(output[0].success, false);
   },
 });
@@ -86,7 +86,7 @@ Deno.test({
     await client.receive([["mutable://app/x", "data"]]);
 
     // String form
-    const r1 = await client.read("mutable://app/x");
+    const r1 = await client.read(["mutable://app/x"]);
     assertEquals(r1[0].record?.data, "data");
 
     // Array form
@@ -104,7 +104,7 @@ Deno.test({
 
     const observed: { uri?: string; data: unknown }[] = [];
     const observePromise = (async () => {
-      for await (const result of client.observe("mutable://app/*", ac.signal)) {
+      for await (const result of client.observe(["mutable://app/*"], ac.signal)) {
         observed.push({ uri: result.uri, data: result.record?.data });
         ac.abort();
       }
@@ -137,7 +137,7 @@ Deno.test({
 
     const observed: unknown[] = [];
     const done = (async () => {
-      for await (const r of client.observe("mutable://x/:k", ac.signal)) {
+      for await (const r of client.observe(["mutable://x/:k"], ac.signal)) {
         observed.push(r.record?.data);
         ac.abort();
       }
@@ -159,7 +159,7 @@ Deno.test({
     let seenPayload: unknown;
     const done = (async () => {
       for await (
-        const r of client.observe("mutable://tokens/:id", ac.signal)
+        const r of client.observe(["mutable://tokens/:id"], ac.signal)
       ) {
         seenPayload = r.record?.data;
         ac.abort();

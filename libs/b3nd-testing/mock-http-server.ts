@@ -71,14 +71,9 @@ export class MockHttpServer {
         return await this.handleReceive(req);
       }
 
-      // Read endpoint
-      if (url.pathname.startsWith("/api/v1/read/")) {
-        return this.handleRead(url);
-      }
-
-      // List endpoint
-      if (url.pathname.startsWith("/api/v1/list/")) {
-        return this.handleList(url);
+      // Read endpoint (v2: batch POST with { urls: string[] })
+      if (req.method === "POST" && url.pathname === "/api/v2/read") {
+        return await this.handleReadV2(req);
       }
 
       return new Response("Not Found", { status: 404 });
@@ -198,114 +193,72 @@ export class MockHttpServer {
     return Response.json(results);
   }
 
-  private handleRead(url: URL): Response {
-    // Parse URI from path: /api/v1/read/{protocol}/{domain}{path}
-    const hasTrailingSlash = url.pathname.endsWith("/");
-    const parts = url.pathname.split("/").slice(4).filter(Boolean); // Skip /api/v1/read/
-    const protocol = parts[0];
-    const domain = parts[1];
-    const subpath = parts.slice(2).join("/");
-    const uri = subpath
-      ? `${protocol}://${domain}/${subpath}`
-      : `${protocol}://${domain}`;
-
-    // Trailing slash = list mode → return ReadResult[] for all matching keys
-    if (hasTrailingSlash) {
-      const prefix = uri.endsWith("/") ? uri : uri;
-      const results = Array.from(this.storage.entries())
-        .filter(([key]) => key.startsWith(prefix))
-        .map(([key, record]) => ({
-          success: true,
-          uri: key,
-          record,
-        }));
-      return Response.json(results);
+  private async handleReadV2(req: Request): Promise<Response> {
+    let body: unknown;
+    try {
+      body = await req.json();
+    } catch {
+      return Response.json({ error: "Invalid JSON body" }, { status: 400 });
     }
-
-    const record = this.storage.get(uri);
-
-    if (!record) {
-      return new Response("Not found", { status: 404 });
+    const urls = (body as { urls?: unknown })?.urls;
+    if (!Array.isArray(urls) || !urls.every((u) => typeof u === "string")) {
+      return Response.json(
+        { error: "Expected { urls: string[] }" },
+        { status: 400 },
+      );
     }
-
-    // If data is binary (Uint8Array), return raw bytes with MIME type from URI
-    if (record.data instanceof Uint8Array) {
-      const mimeType = this.getMimeTypeFromUri(uri);
-      return new Response(record.data as unknown as BodyInit, {
-        status: 200,
-        headers: {
-          "Content-Type": mimeType,
-          "Content-Length": record.data.length.toString(),
-        },
-      });
-    }
-
-    return Response.json(record);
+    const out = (urls as string[]).flatMap((url) => this.readOne(url));
+    return Response.json(out);
   }
 
   /**
-   * Get MIME type from URI based on file extension
+   * Read one url. Supports the same fn dispatcher the real memory store
+   * does: `fn=read` (default), `fn=ls` (with optional trailing slash on
+   * the uri), `fn=count`. Anything else returns an unsupported error.
    */
-  private getMimeTypeFromUri(uri: string): string {
-    const MIME_TYPES: Record<string, string> = {
-      html: "text/html",
-      css: "text/css",
-      js: "application/javascript",
-      json: "application/json",
-      png: "image/png",
-      jpg: "image/jpeg",
-      jpeg: "image/jpeg",
-      gif: "image/gif",
-      webp: "image/webp",
-      svg: "image/svg+xml",
-      ico: "image/x-icon",
-      woff: "font/woff",
-      woff2: "font/woff2",
-      ttf: "font/ttf",
-      mp3: "audio/mpeg",
-      mp4: "video/mp4",
-      wasm: "application/wasm",
-      pdf: "application/pdf",
-    };
+  private readOne(url: string): unknown[] {
+    const qIdx = url.indexOf("?");
+    const uri = qIdx < 0 ? url : url.slice(0, qIdx);
+    const params = new URLSearchParams(qIdx < 0 ? "" : url.slice(qIdx + 1));
+    const explicit = params.get("fn");
+    const fn = explicit ?? (uri.endsWith("/") ? "ls" : "read");
 
-    const path = uri.split("://").pop() || uri;
-    const ext = path.split(".").pop()?.toLowerCase();
-    return MIME_TYPES[ext || ""] || "application/octet-stream";
+    if (fn === "read") {
+      const record = this.storage.get(uri);
+      if (!record) return [{ success: false, error: "Not found" }];
+      const data = record.data instanceof Uint8Array
+        ? {
+          __b3nd_binary__: true,
+          encoding: "base64",
+          data: this.encodeB64(record.data),
+        }
+        : record.data;
+      return [{ success: true, record: { data } }];
+    }
+    if (fn === "ls") {
+      const prefix = uri.endsWith("/") ? uri : `${uri}/`;
+      const format = params.get("format") ?? "full";
+      return Array.from(this.storage.entries())
+        .filter(([k]) => k.startsWith(prefix))
+        .map(([k, record]) =>
+          format === "uris"
+            ? { success: true, uri: k }
+            : { success: true, uri: k, record }
+        );
+    }
+    if (fn === "count") {
+      const prefix = uri.endsWith("/") ? uri : `${uri}/`;
+      const n = Array.from(this.storage.keys())
+        .filter((k) => k.startsWith(prefix)).length;
+      return [{ success: true, record: { data: n } }];
+    }
+    return [{ success: false, error: `unsupported fn '${fn}'` }];
   }
 
-  private handleList(url: URL): Response {
-    // Parse URI from path: /api/v1/list/{protocol}/{domain}{path}
-    const parts = url.pathname.split("/").slice(4); // Skip /api/v1/list/
-    const protocol = parts[0];
-    const domain = parts[1];
-    const pathPart = parts.length > 2 ? "/" + parts.slice(2).join("/") : "";
-
-    const prefix = `${protocol}://${domain}${pathPart}`;
-    const pattern = url.searchParams.get("pattern");
-
-    let items = Array.from(this.storage.keys())
-      .filter((key) => key.startsWith(prefix))
-      .map((uri) => ({
-        uri,
-      }));
-
-    // Apply pattern filter if provided
-    if (pattern) {
-      items = items.filter((item) => item.uri.includes(pattern));
-    }
-
-    const page = parseInt(url.searchParams.get("page") || "1");
-    const limit = parseInt(url.searchParams.get("limit") || "50");
-
-    return Response.json({
-      success: true,
-      data: items.slice((page - 1) * limit, page * limit),
-      pagination: {
-        page,
-        limit,
-        total: items.length,
-      },
-    });
+  private encodeB64(bytes: Uint8Array): string {
+    let s = "";
+    for (let i = 0; i < bytes.length; i++) s += String.fromCharCode(bytes[i]);
+    return btoa(s);
   }
 }
 

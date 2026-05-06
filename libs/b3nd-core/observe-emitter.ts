@@ -11,13 +11,14 @@
  *   - write  → `_emit(uri, data)`
  *   - delete → `_emit(uri, null)` (via `_emitDeletes([uri, ...])`)
  *
- * Each call to `observe(pattern, signal)` registers a persistent
- * per-iterator listener that survives yields — events emitted while the
- * consumer is processing a yielded value are buffered in a per-iterator
- * queue, not lost.
+ * `observe(urls, signal)` accepts the read-url grammar. The routing
+ * key (uri portion) of each url is used as the pattern; the query
+ * string is reserved for fn-specific stream shaping handled by
+ * subclasses that override this method.
  */
 import { matchPattern } from "./match-pattern.ts";
 import type { ReadResult } from "./types.ts";
+import { routingKey } from "./url.ts";
 
 export type ObserveListener = (
   uri: string,
@@ -58,7 +59,7 @@ export class ObserveEmitter {
 
   /**
    * Async iterator yielding `ReadResult` for each URI change matching
-   * the pattern. Runs until `signal` aborts.
+   * any of the input urls. Runs until `signal` aborts.
    *
    * Deletes surface as `{ success: true, uri, record: { data: null } }`.
    *
@@ -68,15 +69,16 @@ export class ObserveEmitter {
    * yield boundary.
    */
   async *observe<T = unknown>(
-    pattern: string,
+    urls: string[],
     signal: AbortSignal,
   ): AsyncIterable<ReadResult<T>> {
-    const segments = pattern.split("/");
+    const patterns = urls.map((u) => routingKey(u).split("/"));
     const queue: ReadResult<T>[] = [];
     let wake: (() => void) | null = null;
 
     const listener: ObserveListener = (uri, data) => {
-      if (matchPattern(segments, uri) !== null) {
+      const matched = patterns.some((segs) => matchPattern(segs, uri) !== null);
+      if (matched) {
         queue.push({
           success: true,
           uri,

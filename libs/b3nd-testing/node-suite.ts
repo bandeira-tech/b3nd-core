@@ -68,7 +68,7 @@ export function runNodeSuite(
       assertEquals(results[0].accepted, true);
       assertEquals(results[0].error, undefined);
 
-      const readResults = await node.read("store://users/alice/profile");
+      const readResults = await node.read(["store://users/alice/profile"]);
 
       assertEquals(readResults.length, 1);
       assertEquals(readResults[0].success, true);
@@ -95,8 +95,8 @@ export function runNodeSuite(
       assertEquals(results[1].accepted, true);
 
       // Verify both were stored
-      const read1 = await node.read("store://users/alice/profile");
-      const read2 = await node.read("store://users/bob/profile");
+      const read1 = await node.read(["store://users/alice/profile"]);
+      const read2 = await node.read(["store://users/bob/profile"]);
 
       assertEquals(read1.length, 1);
       assertEquals(read2.length, 1);
@@ -127,7 +127,7 @@ export function runNodeSuite(
       ]);
 
       // Verify data was updated
-      const readResults = await node.read("store://users/alice/profile");
+      const readResults = await node.read(["store://users/alice/profile"]);
       assertEquals(readResults.length, 1);
       assertEquals(readResults[0].success, true);
       assertEquals(readResults[0].record?.data, {

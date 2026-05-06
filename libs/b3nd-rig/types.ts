@@ -178,31 +178,3 @@ export interface RigInfo {
   };
 }
 
-/**
- * Options for rig.watch() — reactive polling.
- */
-export interface WatchOptions {
-  /** Polling interval in milliseconds. Default: 1000. */
-  intervalMs?: number;
-  /** AbortSignal to stop watching. */
-  signal?: AbortSignal;
-}
-
-/**
- * Options for rig.watchAll() — reactive collection watching.
- */
-export type WatchAllOptions = WatchOptions;
-
-/**
- * A snapshot emitted by watchAll() when any item in the collection changes.
- */
-export interface WatchAllSnapshot<T = unknown> {
-  /** Current state of all items — URI → data. */
-  items: Map<string, T>;
-  /** URIs added since the last snapshot. */
-  added: string[];
-  /** URIs removed since the last snapshot. */
-  removed: string[];
-  /** URIs whose data changed since the last snapshot. */
-  changed: string[];
-}
