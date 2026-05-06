@@ -14,7 +14,6 @@ async function readData<T>(rig: Rig, url: string): Promise<T | null> {
   return r?.success && r.record ? r.record.data : null;
 }
 
-
 /** Shorthand: null-aware Store adapter backed by an in-memory store. */
 function memClient() {
   return new DataStoreClient(new MemoryStore());
@@ -1018,7 +1017,6 @@ Deno.test("Rig.status - returns schema keys for memory backend", async () => {
   assertEquals(status.status, "healthy");
 });
 
-
 // ── Program-validated Rig tests ──
 // Programs classify messages by URI prefix and can reject via `error`.
 
@@ -1413,7 +1411,6 @@ Deno.test("Identity.verify - rejects wrong pubkey signature", async () => {
   assertEquals(valid, false);
 });
 
-
 // ── Rig.observe() tests (client-backed streaming) ──
 
 Deno.test({
@@ -1472,7 +1469,9 @@ Deno.test({
 
     // Should immediately complete (no connection accepts observe)
     abort.abort();
-    for await (const result of rig.observe(["mutable://open/*"], abort.signal)) {
+    for await (
+      const result of rig.observe(["mutable://open/*"], abort.signal)
+    ) {
       results.push(result);
     }
 

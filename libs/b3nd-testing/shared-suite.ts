@@ -129,7 +129,9 @@ export function runSharedSuite(
       ]);
       assertEquals(results[0].accepted, true);
 
-      const readResults = await client.read(["store://users/scalar-string/data"]);
+      const readResults = await client.read([
+        "store://users/scalar-string/data",
+      ]);
       assertEquals(readResults.length, 1);
       assertEquals(
         readResults[0].success,
@@ -151,7 +153,9 @@ export function runSharedSuite(
       ]);
       assertEquals(results[0].accepted, true);
 
-      const readResults = await client.read(["store://users/scalar-number/data"]);
+      const readResults = await client.read([
+        "store://users/scalar-number/data",
+      ]);
       assertEquals(readResults.length, 1);
       assertEquals(
         readResults[0].success,
@@ -217,7 +221,9 @@ export function runSharedSuite(
       ]);
       assertEquals(results[0].accepted, true);
 
-      const readResults = await client.read(["store://users/scalar-empty/data"]);
+      const readResults = await client.read([
+        "store://users/scalar-empty/data",
+      ]);
       assertEquals(readResults.length, 1);
       assertEquals(
         readResults[0].success,
@@ -472,8 +478,8 @@ export function runSharedSuite(
         );
 
         const readResults = await client.read<Uint8Array>([
-      "store://files/test-image.png",
-    ]);
+          "store://files/test-image.png",
+        ]);
 
         assertEquals(readResults.length, 1);
         assertEquals(
@@ -527,8 +533,8 @@ export function runSharedSuite(
         );
 
         const readResults = await client.read<Uint8Array>([
-      "store://files/large-file.bin",
-    ]);
+          "store://files/large-file.bin",
+        ]);
 
         assertEquals(readResults.length, 1);
         assertEquals(
@@ -578,7 +584,9 @@ export function runSharedSuite(
         }]]),
       ]);
 
-      const readResults = await client.read(["store://users/overwrite/profile"]);
+      const readResults = await client.read([
+        "store://users/overwrite/profile",
+      ]);
       assertEquals(readResults.length, 1);
       assertEquals(readResults[0].success, true);
       assertEquals(readResults[0].record?.data, {

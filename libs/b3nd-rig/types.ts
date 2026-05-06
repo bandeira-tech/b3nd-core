@@ -26,11 +26,12 @@ export type { ProtocolInterfaceNode };
  * - `receive` — broadcast: a tuple lands at every connection whose
  *   pattern accepts its URI. Per-route outcomes surface as
  *   `route:success` / `route:error` on the operation handle.
- * - `read` — first match wins for point reads (one URI, one
- *   answer); list reads (trailing-slash URIs) gather across all
- *   matching connections.
- * - `observe` — first match wins; the chosen connection's client
- *   handles the underlying transport.
+ * - `read` — sequential: per url, the first connection whose pattern
+ *   accepts the routing key gets the request. No fall-through, no
+ *   aggregation. Aggregation across sources is the job of an
+ *   aggregating client (e.g. memcache + shards), not the rig.
+ * - `observe` — urls are grouped by the first matching connection;
+ *   the rig multiplexes the per-connection streams into one.
  *
  * The same connection value can appear in multiple routes when one
  * client serves all three with the same filter. A different filter
@@ -177,4 +178,3 @@ export interface RigInfo {
     reactors: number;
   };
 }
-

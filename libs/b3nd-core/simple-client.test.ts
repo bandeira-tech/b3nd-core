@@ -104,7 +104,9 @@ Deno.test({
 
     const observed: { uri?: string; data: unknown }[] = [];
     const observePromise = (async () => {
-      for await (const result of client.observe(["mutable://app/*"], ac.signal)) {
+      for await (
+        const result of client.observe(["mutable://app/*"], ac.signal)
+      ) {
         observed.push({ uri: result.uri, data: result.record?.data });
         ac.abort();
       }

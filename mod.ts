@@ -70,11 +70,7 @@ export { ConsoleClient } from "./libs/b3nd-client-console/client.ts";
 export { Identity } from "./libs/b3nd-rig/identity.ts";
 export type { ExportedIdentity } from "./libs/b3nd-rig/identity.ts";
 export { Rig } from "./libs/b3nd-rig/rig.ts";
-export type {
-  RigConfig,
-  RigInfo,
-  RigRoutes,
-} from "./libs/b3nd-rig/types.ts";
+export type { RigConfig, RigInfo, RigRoutes } from "./libs/b3nd-rig/types.ts";
 
 // OperationHandle
 export type {

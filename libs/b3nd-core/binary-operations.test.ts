@@ -360,7 +360,9 @@ Deno.test({
     ]]);
     assertEquals(result[0].accepted, true, "Empty binary write should succeed");
 
-    const readResults = await client.read<Uint8Array>(["files://empty/zero.bin"]);
+    const readResults = await client.read<Uint8Array>([
+      "files://empty/zero.bin",
+    ]);
     assertEquals(
       readResults[0].success,
       true,
@@ -484,7 +486,9 @@ Deno.test({
     assertEquals(jsonRead[0].record?.data, jsonData, "JSON data should match");
 
     // Read binary back
-    const binaryRead = await client.read<Uint8Array>(["store://mixed/data.bin"]);
+    const binaryRead = await client.read<Uint8Array>([
+      "store://mixed/data.bin",
+    ]);
     assertEquals(binaryRead[0].success, true, "Binary read should succeed");
     assertEquals(
       compareBinary(binaryData, binaryRead[0].record?.data as Uint8Array),

@@ -145,13 +145,11 @@ class MockWebSocket {
             for (const [storedUri, stored] of this.storage) {
               if (!storedUri.startsWith(prefix)) continue;
               allResults.push(
-                format === "uris"
-                  ? { success: true, uri: storedUri }
-                  : {
-                    success: true,
-                    uri: storedUri,
-                    record: { data: stored.data },
-                  },
+                format === "uris" ? { success: true, uri: storedUri } : {
+                  success: true,
+                  uri: storedUri,
+                  record: { data: stored.data },
+                },
               );
             }
           } else if (fn === "count") {

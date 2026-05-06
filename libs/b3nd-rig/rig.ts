@@ -1022,8 +1022,8 @@ function createRouteDispatch(
       const allSchema = new Set<string>();
       const allFns = new Set<string>();
       for (const r of results) {
-        if (r.schema) for (const k of r.schema) allSchema.add(k);
-        if (r.fns) for (const f of r.fns) allFns.add(f);
+        if (r.schema) { for (const k of r.schema) allSchema.add(k); }
+        if (r.fns) { for (const f of r.fns) allFns.add(f); }
       }
       const fns = allFns.size > 0 ? [...allFns] : undefined;
       const unhealthy = results.find((r) => r.status === "unhealthy");
