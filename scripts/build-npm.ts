@@ -24,6 +24,8 @@ await build({
     { name: "./types", path: "./libs/b3nd-core/types.ts" },
     { name: "./encoding", path: "./libs/b3nd-core/encoding.ts" },
     { name: "./binary", path: "./libs/b3nd-core/binary.ts" },
+    { name: "./hash", path: "./hash.ts" },
+    { name: "./encrypt", path: "./encrypt.ts" },
     { name: "./network", path: "./libs/b3nd-network/mod.ts" },
     { name: "./rig", path: "./rig.ts" },
     { name: "./identity", path: "./libs/b3nd-rig/identity.ts" },
@@ -48,7 +50,7 @@ await build({
     name: "@bandeira-tech/b3nd-core",
     version,
     description:
-      "B3nd Core — framework foundation: types, encoding, clients, rig, network",
+      "B3nd Core — framework foundation: types, encoding, clients, rig, network, hash, encrypt",
     license: "MIT",
     repository: {
       type: "git",

@@ -1,12 +1,14 @@
 {
   "name": "@bandeira-tech/b3nd-core",
-  "version": "0.13.0",
-  "description": "B3nd Core — framework foundation: types, encoding, clients, rig, network",
+  "version": "0.14.0",
+  "description": "B3nd Core — framework foundation: types, encoding, clients, rig, network, hash, encrypt",
   "exports": {
     ".": "./mod.ts",
     "./types": "./libs/b3nd-core/types.ts",
     "./encoding": "./libs/b3nd-core/encoding.ts",
     "./binary": "./libs/b3nd-core/binary.ts",
+    "./hash": "./hash.ts",
+    "./encrypt": "./encrypt.ts",
     "./network": "./libs/b3nd-network/mod.ts",
     "./rig": "./rig.ts",
     "./identity": "./libs/b3nd-rig/identity.ts",
