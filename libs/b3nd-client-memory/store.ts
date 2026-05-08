@@ -22,7 +22,7 @@
 
 import type {
   DeleteResult,
-  ReadResult,
+  Output,
   StatusResult,
   Store,
   StoreCapabilities,
@@ -30,7 +30,7 @@ import type {
   StoreWriteResult,
 } from "../b3nd-core/types.ts";
 import type { ParsedUrl } from "../b3nd-core/url.ts";
-import { parseUrl } from "../b3nd-core/url.ts";
+import { countUri, parseUrl } from "../b3nd-core/url.ts";
 
 type StorageNode<T = unknown> = {
   value?: { data: T };
@@ -108,58 +108,52 @@ export class MemoryStore implements Store {
 
   // ── Read ─────────────────────────────────────────────────────────
 
-  read<T = unknown>(urls: string[]): Promise<ReadResult<T>[]> {
-    const results: ReadResult<T>[] = [];
+  read<T = unknown>(urls: string[]): Promise<Output<T>[]> {
+    const out: Output<T>[] = [];
 
     for (const url of urls) {
       const parsed = parseUrl(url);
       switch (parsed.fn) {
-        case "read":
-          results.push(this._readOne<T>(parsed.uri));
+        case "read": {
+          const found = this._readOne<T>(parsed.uri);
+          // Option-A: "not found" surfaces as absence (no Output).
+          if (found !== undefined) out.push(found);
           break;
+        }
         case "ls":
-          results.push(...this._list<T>(parsed));
+          out.push(...this._list<T>(parsed));
           break;
         case "count":
-          results.push(this._count(parsed) as ReadResult<T>);
+          out.push(this._count(parsed) as unknown as Output<T>);
           break;
         default:
-          results.push({
-            success: false,
-            error: `MemoryStore: unsupported fn '${parsed.fn}'`,
-          });
+          // Programmer error — unknown fn is not a domain "not found".
+          throw new Error(`MemoryStore: unsupported fn '${parsed.fn}'`);
       }
     }
 
-    return Promise.resolve(results);
+    return Promise.resolve(out);
   }
 
-  private _readOne<T>(uri: string): ReadResult<T> {
+  private _readOne<T>(uri: string): Output<T> | undefined {
     const { parts, node } = resolveTarget(uri, this.storage);
 
     let current: StorageNode | undefined = node;
     for (const part of parts.filter(Boolean)) {
       current = current?.children?.get(part);
-      if (!current) {
-        return { success: false, error: `Path not found: ${part}` };
-      }
+      if (!current) return undefined;
     }
 
-    if (!current.value) {
-      return { success: false, error: "Not found" };
-    }
-
-    return {
-      success: true,
-      record: current.value as { data: T },
-    };
+    if (!current.value) return undefined;
+    return [uri, (current.value as { data: T }).data];
   }
 
   /**
-   * Walk the prefix and collect leaves into `[uri, record]` pairs.
-   * Returns the raw entries; callers apply ls or count semantics.
+   * Walk the prefix and collect leaves into `[uri, payload]` Output
+   * tuples. Returns the raw entries; callers apply ls or count
+   * semantics.
    */
-  private _walk(uri: string): { uri: string; record: { data: unknown } }[] {
+  private _walk(uri: string): Output[] {
     const { node, parts, program, path } = resolveTarget(uri, this.storage);
     let current: StorageNode | undefined = node;
 
@@ -168,17 +162,17 @@ export class MemoryStore implements Store {
       if (!current) return [];
     }
 
-    const out: { uri: string; record: { data: unknown } }[] = [];
+    const out: Output[] = [];
     const prefix = path.endsWith("/")
       ? `${program}${path}`
       : `${program}${path}/`;
 
-    function collect(node: StorageNode, currentUri: string) {
-      if (node.value !== undefined) {
-        out.push({ uri: currentUri, record: node.value });
+    function collect(n: StorageNode, currentUri: string) {
+      if (n.value !== undefined) {
+        out.push([currentUri, (n.value as { data: unknown }).data]);
       }
-      if (node.children) {
-        for (const [key, child] of node.children) {
+      if (n.children) {
+        for (const [key, child] of n.children) {
           collect(child, `${currentUri}/${key}`);
         }
       }
@@ -189,35 +183,36 @@ export class MemoryStore implements Store {
         collect(child, `${prefix}${key}`);
       }
     } else if (current.value !== undefined) {
-      out.push({ uri: `${program}${path}`, record: current.value });
+      out.push([
+        `${program}${path}`,
+        (current.value as { data: unknown }).data,
+      ]);
     }
 
     return out;
   }
 
-  private _list<T>(parsed: ParsedUrl): ReadResult<T>[] {
+  private _list<T>(parsed: ParsedUrl): Output<T>[] {
     const { params } = parsed;
-    const reject = (msg: string): ReadResult<T>[] => [{
-      success: false,
-      error: `MemoryStore: ${msg}`,
-    }];
 
+    // Programmer errors: unsupported params throw — option-A reserves
+    // "not found" for the absence channel.
     if (params.pattern !== undefined) {
-      return reject("pattern filter not supported");
+      throw new Error("MemoryStore: pattern filter not supported");
     }
     if (params.sortBy !== undefined && params.sortBy !== "uri") {
-      return reject(`unsupported sortBy: ${params.sortBy}`);
+      throw new Error(`MemoryStore: unsupported sortBy: ${params.sortBy}`);
     }
     const format = params.format ?? "full";
     if (format !== "full" && format !== "uris") {
-      return reject(`unsupported format: ${format}`);
+      throw new Error(`MemoryStore: unsupported format: ${format}`);
     }
 
     let entries = this._walk(parsed.uri);
 
     if (params.sortBy === "uri") {
       const dir = params.sortOrder === "desc" ? -1 : 1;
-      entries.sort((a, b) => a.uri.localeCompare(b.uri) * dir);
+      entries.sort(([a], [b]) => a.localeCompare(b) * dir);
     }
 
     if (params.limit !== undefined) {
@@ -226,22 +221,18 @@ export class MemoryStore implements Store {
       entries = entries.slice(start, start + params.limit);
     }
 
-    return entries.map((e): ReadResult<T> =>
-      format === "uris"
-        ? { success: true, uri: e.uri }
-        : { success: true, uri: e.uri, record: e.record as { data: T } }
-    );
+    if (format === "uris") {
+      return entries.map(([uri]) => [uri, undefined as T]);
+    }
+    return entries as Output<T>[];
   }
 
-  private _count(parsed: ParsedUrl): ReadResult<number> {
+  private _count(parsed: ParsedUrl): Output<number> {
     if (parsed.params.pattern !== undefined) {
-      return {
-        success: false,
-        error: `MemoryStore: pattern filter not supported`,
-      };
+      throw new Error("MemoryStore: pattern filter not supported");
     }
     const n = this._walk(parsed.uri).length;
-    return { success: true, record: { data: n } };
+    return [countUri(parsed.uri), n];
   }
 
   // ── Delete ───────────────────────────────────────────────────────

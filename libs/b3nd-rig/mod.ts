@@ -45,13 +45,7 @@ export type {
   RouteSuccessEvent,
   SettledEvent,
 } from "./operation-handle.ts";
-export type {
-  RigConfig,
-  RigInfo,
-  WatchAllOptions,
-  WatchAllSnapshot,
-  WatchOptions,
-} from "./types.ts";
+export type { RigConfig, RigInfo } from "./types.ts";
 
 // Core types — re-exported so app-specific libs import from rig, not core
 export type {
@@ -61,7 +55,6 @@ export type {
   Program,
   ProgramResult,
   ProtocolInterfaceNode,
-  ReadResult,
   ReceiveResult,
   StatusResult,
   Store,

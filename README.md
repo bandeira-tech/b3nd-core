@@ -34,15 +34,17 @@ await rig.receive([["mutable://open/users/alice", { name: "Alice" }]]);
 await rig.receive([["mutable://open/users/bob", { name: "Bob" }]]);
 
 // Heterogeneous batch in one call: profile + count + listing.
+// `read` returns a flat `Output[]` — `[uri, payload]` tuples — same
+// shape as `receive` accepts. The framework speaks one shape end-to-end.
 const [profile, total, ...users] = await rig.read([
   "mutable://open/users/alice",
   count("mutable://open/users"),
   list("mutable://open/users", { limit: 10, sortBy: "uri" }),
 ]);
 
-profile.record?.data; // { name: "Alice" }
-total.record?.data; // 2
-users.map((r) => r.uri); // ["mutable://open/users/alice", "mutable://open/users/bob"]
+profile?.[1]; // { name: "Alice" }
+total?.[1]; // 2          — addressed at "b3nd://count/mutable://open/users"
+users.map((r) => r[0]); // ["mutable://open/users/alice", "mutable://open/users/bob"]
 ```
 
 ### URL grammar
@@ -65,7 +67,7 @@ provider-defined extension. Build urls with the helpers (`count`, `list`,
 ```typescript
 import { count, list, listUris, x } from "@bandeira-tech/b3nd-core/url";
 
-pin.read([
+const outputs = await pin.read([
   "instagram://users/alice", // simple read
   count("instagram://users/alice/posts/"), // count of posts
   listUris("instagram://users/alice/posts/", {
@@ -78,19 +80,44 @@ pin.read([
     ext: { "x-ig.cursor": "eyJ…" },
   }), // provider extension
 ]);
+// outputs = [
+//   ["instagram://users/alice", { name: "Alice", … }],
+//   ["b3nd://count/instagram://users/alice/posts/", 4127],
+//   ["instagram://users/alice/posts/p1", undefined], // listUris omits payload
+//   …
+//   ["b3nd://x-ig.rank/...", { /* provider-shaped payload */ }],
+// ]
 ```
+
+### Errors and absence (option A)
+
+The framework speaks one shape — `Output[]` — end-to-end. There is no explicit
+failure channel:
+
+- **Transport / programmer errors throw**: network down, malformed url, no route
+  accepts, unknown reserved fn — they propagate as exceptions.
+- **"Not found" surfaces as absence**: a missing uri simply doesn't appear in
+  the result. Callers detect by comparing input uris to result uris (or by
+  `outputs.length`).
+- **Domain-level errors live inside the payload**: a protocol can encode
+  auth-denied or quota-exceeded into the Output payload at a reserved key. The
+  framework treats payloads as opaque.
+
+Synthetic addresses (`fn=count` answers, observe envelopes, anything the
+framework had to invent) live under the reserved `b3nd://` namespace.
 
 ### Observe (INV-style)
 
-`observe` notifies you that a uri changed; you read the uri to learn its current
-state. No payload on the wire — the read path is the single source of truth.
+`observe` yields `Output<string[]>` packages — `[meta, uris]` — where `meta` is
+`b3nd://observe` and `uris` is the list of uris that changed in this batch. Read
+each uri to learn its current state.
 
 ```typescript
 const ac = new AbortController();
-for await (const ev of pin.observe(["mutable://app/*"], ac.signal)) {
-  const [r] = await pin.read([ev.uri]);
-  if (r.success) console.log(ev.uri, r.record?.data);
-  else console.log(ev.uri, "deleted");
+for await (const [, uris] of pin.observe(["mutable://app/*"], ac.signal)) {
+  const outputs = await pin.read(uris);
+  for (const [uri, payload] of outputs) console.log(uri, payload);
+  // uris missing from `outputs` were deleted (option-A absence).
 }
 ```
 

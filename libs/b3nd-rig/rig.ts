@@ -12,12 +12,10 @@
 
 import type {
   CodeHandler,
-  ObserveEvent,
   Output,
   Program,
   ProgramResult,
   ProtocolInterfaceNode,
-  ReadResult,
   ReceiveResult,
   StatusResult,
 } from "../b3nd-core/types.ts";
@@ -648,11 +646,12 @@ export class Rig {
   }
 
   /** Internal read helper bound to the dispatch read interface. */
-  private _readFn(): <T = unknown>(u: string) => Promise<ReadResult<T>> {
+  private _readFn(): <T = unknown>(
+    u: string,
+  ) => Promise<Output<T> | undefined> {
     return async <T = unknown>(u: string) => {
       const results = await this._dispatch.read<T>([u]);
-      return results[0] ??
-        { success: false, error: "No results" } as ReadResult<T>;
+      return results[0]; // undefined when absent (option-A)
     };
   }
 
@@ -679,7 +678,7 @@ export class Rig {
    * first connection whose route accepts its routing key. See `url.ts`
    * for the grammar.
    */
-  async read<T = unknown>(urls: string[]): Promise<ReadResult<T>[]> {
+  async read<T = unknown>(urls: string[]): Promise<Output<T>[]> {
     // Before-hook per url. The hook sees just `{ url }`; if it wants
     // the parsed view it calls `parseUrl(ctx.url)` itself. Returning
     // `{ ctx: { url: newUrl } }` rewrites; otherwise the url passes
@@ -691,9 +690,9 @@ export class Rig {
     }
 
     // Execute
-    let results: ReadResult<T>[];
+    let outputs: Output<T>[];
     try {
-      results = await this._dispatch.read<T>(finalUrls);
+      outputs = await this._dispatch.read<T>(finalUrls);
     } catch (err) {
       for (const url of finalUrls) {
         this._events.emit("read:error", {
@@ -706,33 +705,20 @@ export class Rig {
       throw err;
     }
 
-    // After-hook + events per result. Each result is paired to the
-    // request that produced it (clamping when ls expands one input
-    // into many results).
-    for (let i = 0; i < results.length; i++) {
-      const result = results[i];
-      const requestUrl = finalUrls[Math.min(i, finalUrls.length - 1)];
-      const uri = result.uri ?? routingKey(requestUrl);
-      await runAfter(this._hooks.afterRead, { url: requestUrl }, result);
-
-      if (result.success) {
-        this._events.emit("read:success", {
-          op: "read",
-          uri,
-          result,
-          ts: Date.now(),
-        });
-      } else {
-        this._events.emit("read:error", {
-          op: "read",
-          uri,
-          error: result.error,
-          ts: Date.now(),
-        });
-      }
+    // After-hook + event per Output. Option-A doesn't have per-result
+    // failures (those throw); every Output is a success.
+    for (const output of outputs) {
+      const [uri] = output;
+      await runAfter(this._hooks.afterRead, { url: uri }, output);
+      this._events.emit("read:success", {
+        op: "read",
+        uri,
+        result: output,
+        ts: Date.now(),
+      });
     }
 
-    return results;
+    return outputs;
   }
 
   // ── Observe (client-backed streaming) ──
@@ -754,7 +740,7 @@ export class Rig {
   async *observe(
     urls: string[],
     signal: AbortSignal,
-  ): AsyncIterable<ObserveEvent> {
+  ): AsyncIterable<Output<string[]>> {
     yield* this._dispatch.observe(urls, signal);
   }
 
@@ -958,30 +944,27 @@ function createRouteDispatch(
       return results;
     },
 
-    async read<T = unknown>(urls: string[]): Promise<ReadResult<T>[]> {
-      const allResults: ReadResult<T>[] = [];
+    async read<T = unknown>(urls: string[]): Promise<Output<T>[]> {
+      const out: Output<T>[] = [];
 
       for (const url of urls) {
         const key = routingKey(url);
         const conn = read.find((s) => s.accepts(key));
         if (!conn) {
-          allResults.push({
-            success: false,
-            error: `No read route accepts ${key}`,
-          });
-          continue;
+          // Programmer error — this rig isn't configured for this url.
+          throw new Error(`No read route accepts ${key}`);
         }
         const part = await conn.client.read<T>([url]);
-        allResults.push(...part);
+        out.push(...part);
       }
 
-      return allResults;
+      return out;
     },
 
     async *observe(
       urls: string[],
       signal: AbortSignal,
-    ): AsyncIterable<ObserveEvent> {
+    ): AsyncIterable<Output<string[]>> {
       // Group urls by the first connection that accepts them so each
       // connection sees the subset it owns. No aggregation across
       // connections — that is the aggregating client's job.

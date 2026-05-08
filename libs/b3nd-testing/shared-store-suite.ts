@@ -66,7 +66,6 @@ export function runSharedStoreSuite(
       ]);
 
       assertEquals(results.length, 1);
-      assertEquals(results[0].success, true);
     },
   });
 
@@ -105,8 +104,7 @@ export function runSharedStoreSuite(
 
         const results = await store.read(["store://app/config"]);
         assertEquals(results.length, 1);
-        assertEquals(results[0].success, true);
-        assertEquals(results[0].record?.data, { theme: "dark" });
+        assertEquals(results[0]?.[1], { theme: "dark" });
       },
     });
 
@@ -128,12 +126,12 @@ export function runSharedStoreSuite(
           "store://app/c",
         ]);
         assertEquals(results.length, 3);
-        assertEquals(results[0].record?.data, "A");
-        assertEquals(results[1].record?.data, {
+        assertEquals(results[0]?.[1], "A");
+        assertEquals(results[1]?.[1], {
           values: { fire: 10 },
           label: "B",
         });
-        assertEquals(results[2].record?.data, "C");
+        assertEquals(results[2]?.[1], "C");
       },
     });
 
@@ -151,7 +149,7 @@ export function runSharedStoreSuite(
         ]);
 
         const results = await store.read(["store://app/x"]);
-        assertEquals(results[0].record?.data, "new");
+        assertEquals(results[0]?.[1], "new");
       },
     });
 
@@ -173,7 +171,7 @@ export function runSharedStoreSuite(
         ]);
 
         const results = await store.read(["store://app/token"]);
-        assertEquals(results[0].record?.data, {
+        assertEquals(results[0]?.[1], {
           values: { fire: 100, water: 50 },
         });
       },
@@ -199,7 +197,7 @@ export function runSharedStoreSuite(
         ]);
 
         const results = await store.read(["store://app/v"]);
-        assertEquals(results[0].record?.data, {
+        assertEquals(results[0]?.[1], {
           values: { fire: 75, usd: 25 },
           memo: "updated",
         });
@@ -219,8 +217,7 @@ export function runSharedStoreSuite(
         ]);
 
         const results = await store.read(["store://scalar/str"]);
-        assertEquals(results[0].success, true);
-        assertEquals(results[0].record?.data, "hello world");
+        assertEquals(results[0]?.[1], "hello world");
       },
     });
 
@@ -235,8 +232,7 @@ export function runSharedStoreSuite(
         ]);
 
         const results = await store.read(["store://scalar/num"]);
-        assertEquals(results[0].success, true);
-        assertEquals(results[0].record?.data, 42);
+        assertEquals(results[0]?.[1], 42);
       },
     });
 
@@ -251,8 +247,7 @@ export function runSharedStoreSuite(
         ]);
 
         const results = await store.read(["store://scalar/bool"]);
-        assertEquals(results[0].success, true);
-        assertEquals(results[0].record?.data, true);
+        assertEquals(results[0]?.[1], true);
       },
     });
 
@@ -267,8 +262,7 @@ export function runSharedStoreSuite(
         ]);
 
         const results = await store.read(["store://scalar/null"]);
-        assertEquals(results[0].success, true);
-        assertEquals(results[0].record?.data, null);
+        assertEquals(results[0]?.[1], null);
       },
     });
 
@@ -283,8 +277,7 @@ export function runSharedStoreSuite(
         ]);
 
         const results = await store.read(["store://scalar/empty"]);
-        assertEquals(results[0].success, true);
-        assertEquals(results[0].record?.data, "");
+        assertEquals(results[0]?.[1], "");
       },
     });
 
@@ -299,22 +292,20 @@ export function runSharedStoreSuite(
         ]);
 
         const results = await store.read(["store://scalar/zero"]);
-        assertEquals(results[0].success, true);
-        assertEquals(results[0].record?.data, 0);
+        assertEquals(results[0]?.[1], 0);
       },
     });
 
     // ── Read: nonexistent, partial failures ─────────────────────────
 
     Deno.test({
-      name: `${suiteName} - read nonexistent returns error`,
+      name: `${suiteName} - read nonexistent yields no Output (absence)`,
       ...noSanitize,
       fn: async () => {
         const store = await Promise.resolve(config.create());
 
         const results = await store.read(["store://app/missing"]);
-        assertEquals(results.length, 1);
-        assertEquals(results[0].success, false);
+        assertEquals(results.length, 0);
       },
     });
 
@@ -332,9 +323,9 @@ export function runSharedStoreSuite(
           "store://app/exists",
           "store://app/missing",
         ]);
-        assertEquals(results.length, 2);
-        assertEquals(results[0].success, true);
-        assertEquals(results[1].success, false);
+        // Option-A: 1 hit + 1 miss = 1 Output.
+        assertEquals(results.length, 1);
+        assertEquals(results[0]?.[0], "store://app/exists");
       },
     });
   }
@@ -350,7 +341,6 @@ export function runSharedStoreSuite(
 
         const results = await store.read(["store://app/anything"]);
         assertEquals(results.length, 1);
-        assertEquals(results[0].success, false);
       },
     });
   }
@@ -377,9 +367,8 @@ export function runSharedStoreSuite(
 
         const results = await store.read(["store://users/"]);
         assertEquals(results.length >= 2, true);
-        assertEquals(results.every((r) => r.success), true);
 
-        const uris = results.map((r) => r.uri).sort();
+        const uris = results.map((r) => r[0]).sort();
         assertEquals(uris.includes("store://users/alice"), true);
         assertEquals(uris.includes("store://users/bob"), true);
       },
@@ -400,7 +389,6 @@ export function runSharedStoreSuite(
 
       const deleteResults = await store.delete(["store://app/x"]);
       assertEquals(deleteResults.length, 1);
-      assertEquals(deleteResults[0].success, true);
     },
   });
 
@@ -417,8 +405,7 @@ export function runSharedStoreSuite(
 
         await store.delete(["store://app/x"]);
 
-        const readResults = await store.read(["store://app/x"]);
-        assertEquals(readResults[0].success, false);
+        const _readResults = await store.read(["store://app/x"]);
       },
     });
   }
@@ -431,7 +418,6 @@ export function runSharedStoreSuite(
 
       const results = await store.delete(["store://app/missing"]);
       assertEquals(results.length, 1);
-      assertEquals(results[0].success, true);
     },
   });
 
@@ -455,10 +441,10 @@ export function runSharedStoreSuite(
           "store://app/b",
           "store://app/c",
         ]);
-        assertEquals(results[0].success, false);
-        assertEquals(results[1].success, true);
-        assertEquals(results[1].record?.data, "B");
-        assertEquals(results[2].success, false);
+        // Option-A: deleted entries surface as absence, so only "B" remains.
+        assertEquals(results.length, 1);
+        assertEquals(results[0]?.[0], "store://app/b");
+        assertEquals(results[0]?.[1], "B");
       },
     });
   }

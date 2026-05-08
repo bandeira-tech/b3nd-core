@@ -155,7 +155,7 @@ Deno.test("network() tags events with the source peer", async () => {
 
   const policy: Policy = {
     async *receive(ev, source) {
-      if (ev.uri) seen.push({ peerId: source.id, uri: ev.uri });
+      if (ev[0]) seen.push({ peerId: source.id, uri: ev[0] });
       yield ev;
     },
   };
@@ -184,12 +184,12 @@ Deno.test("network() chains multiple policies left-to-right on each event", asyn
   const a = mem();
   const uppercase: Policy = {
     async *receive(ev) {
-      if (ev.uri) yield { ...ev, uri: ev.uri.toUpperCase() };
+      if (ev[0]) yield [ev[0].toUpperCase(), ev[1]];
     },
   };
   const wrap: Policy = {
     async *receive(ev) {
-      if (ev.uri) yield { ...ev, uri: `w(${ev.uri})` };
+      if (ev[0]) yield [`w(${ev[0]})`, ev[1]];
     },
   };
 
@@ -208,7 +208,7 @@ Deno.test("network() respects a policy that yields nothing (control-plane consum
   const a = mem();
   const policy: Policy = {
     async *receive(ev) {
-      if (ev.uri && !ev.uri.startsWith("data://")) return;
+      if (ev[0] && !ev[0].startsWith("data://")) return;
       yield ev;
     },
   };
@@ -227,12 +227,8 @@ Deno.test("network() forwards transformed events to target", async () => {
   const a = mem();
   const policy: Policy = {
     async *receive(ev) {
-      if (ev.uri) {
-        yield {
-          success: true,
-          uri: `wrapped://${ev.uri}`,
-          record: { data: { wrapped: ev.record?.data } },
-        };
+      if (ev[0]) {
+        yield [`wrapped://${ev[0]}`, { wrapped: ev[1] }];
       }
     },
   };
@@ -254,10 +250,10 @@ Deno.test("network() exposes source.client.read for side-pulls", async () => {
 
   const policy: Policy = {
     async *receive(ev, source) {
-      if (ev.uri?.startsWith("inv://")) {
-        const want = (ev.record?.data as { have: string }).have;
+      if (ev[0]?.startsWith("inv://")) {
+        const want = (ev?.[1] as { have: string }).have;
         const results = await source.client.read<unknown>([want]);
-        for (const r of results) if (r.success) yield { ...r, uri: want };
+        for (const out of results) yield out;
         return;
       }
       yield ev;
@@ -286,12 +282,8 @@ Deno.test("policies carry their own data dependencies via closure", async () => 
   const policyWithStore = (store: typeof localStore): Policy => ({
     async *receive(ev) {
       const existing = await store.read<string>(["mutable://known"]);
-      if (existing[0]?.success && ev.uri) {
-        yield {
-          success: true,
-          uri: `wrapped://${ev.uri}`,
-          record: { data: existing[0].record?.data },
-        };
+      if (existing[0] && ev[0]) {
+        yield [`wrapped://${ev[0]}`, existing[0][1]];
       }
     },
   });
@@ -470,10 +462,10 @@ Deno.test("network() persists bridged writes through the rig pipeline", async ()
     await a.receive([["mutable://k/1", { v: 1 }]]);
     await until(async () => {
       const r = await rig.read(["mutable://k/1"]);
-      return r[0]?.success === true;
+      return r.length > 0;
     });
     const r = await rig.read(["mutable://k/1"]);
-    assertEquals(r[0].record?.data, { v: 1 });
+    assertEquals(r[0]?.[1], { v: 1 });
   } finally {
     await unbind();
   }

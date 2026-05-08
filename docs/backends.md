@@ -4,10 +4,18 @@ This is the contract for anyone implementing a `Store` (Postgres, IndexedDB, S3,
 Redis, …) or a full `ProtocolInterfaceNode` (a network-fronted node, an
 aggregating client, etc.) for b3nd.
 
-The framework is small — four primitives — but the read path now carries
-function dispatch (`fn=read|ls|count|x-…`) and standard parameters (`limit`,
-`page`, `format`, …) inside the url. This doc pins what the framework promises,
-what's reserved, and what you're free to interpret.
+The framework is small — four primitives — and one shape:
+
+> **Everything is `Output`.** `Output<T> = [uri, payload]`. `receive` takes
+> `Output[]`, `read` returns `Output[]`, `observe` yields `Output<string[]>`.
+> There is no separate result envelope, no `success`/`error` discriminator at
+> the framework level. Failures are either thrown (transport / programmer
+> errors) or absent (option-A "not found"). Domain-level errors live inside the
+> payload by protocol convention.
+
+The read path carries function dispatch (`fn=read|ls|count|x-…`) and standard
+parameters (`limit`, `page`, `format`, …) inside the url. This doc pins what the
+framework promises, what's reserved, and what you're free to interpret.
 
 > The url grammar lives in [`libs/b3nd-core/url.ts`](../libs/b3nd-core/url.ts).
 > Helpers (`count`, `list`, `listUris`, `x`) build the strings; you just need to
@@ -28,7 +36,7 @@ Implement four methods:
 ```ts
 interface Store {
   write(entries: StoreEntry[]): Promise<StoreWriteResult[]>;
-  read<T>(urls: string[]): Promise<ReadResult<T>[]>;
+  read<T>(urls: string[]): Promise<Output<T>[]>;
   delete(uris: string[]): Promise<DeleteResult[]>;
   status(): Promise<StatusResult>;
   capabilities?(): StoreCapabilities;
@@ -56,8 +64,11 @@ Implement the four primitives directly:
 ```ts
 interface ProtocolInterfaceNode {
   receive(msgs: Message[]): Promise<ReceiveResult[]>;
-  read<T>(urls: string[]): Promise<ReadResult<T>[]>;
-  observe(urls: string[], signal: AbortSignal): AsyncIterable<ObserveEvent>;
+  read<T>(urls: string[]): Promise<Output<T>[]>;
+  observe(
+    urls: string[],
+    signal: AbortSignal,
+  ): AsyncIterable<Output<string[]>>;
   status(): Promise<StatusResult>;
 }
 ```
@@ -70,29 +81,43 @@ the README.
 ## 2. The `read(urls)` contract
 
 ```ts
-read<T>(urls: string[]): Promise<ReadResult<T>[]>
+read<T>(urls: string[]): Promise<Output<T>[]>
 ```
 
 - **Input**: an ordered batch of url strings.
-- **Output**: `ReadResult[]` in input order. _The result count may exceed the
-  input count_ — `fn=ls` expands one prefix into many results, all of which
-  appear before the next input's results.
-- **Per-url failures are results, not throws.** Return
-  `{ success: false, error: "…" }`. Throw only on unrecoverable transport errors
-  (the rig will surface those as a batch failure).
+- **Output**: a flat `Output[]` — `[uri, payload]` tuples — in input order. The
+  result count is **independent** of input count: `fn=ls` expands one prefix
+  into many Outputs; `fn=read` on a missing uri contributes zero Outputs.
+- **"Not found" surfaces as absence.** Don't return placeholder Outputs for
+  missing entries; just don't push them.
+- **Throw on transport / programmer errors.** Network down, malformed url,
+  unknown reserved fn, unsupported parameters, no route accepts — all throw. The
+  rig propagates these as a single batch failure.
 - **Empty input** is valid — return `[]`.
 
 ### Result shape per `fn`
 
-| `fn`    | Shape per result                                                       |
-| ------- | ---------------------------------------------------------------------- |
-| `read`  | exactly one; `success` + `record.data` _or_ `success: false`           |
-| `ls`    | zero or more; `uri` always set; `record` present iff `format=full`     |
-| `count` | exactly one; `record.data: number`                                     |
-| `x-*.*` | provider-defined; recommend matching one of the above unless necessary |
+| `fn`    | Output count                                                                        | Address                      | Payload                                    |
+| ------- | ----------------------------------------------------------------------------------- | ---------------------------- | ------------------------------------------ |
+| `read`  | 0 or 1                                                                              | the requested uri            | the value (any payload type)               |
+| `ls`    | 0 or more                                                                           | each matched uri             | the value, or `undefined` if `format=uris` |
+| `count` | exactly 1                                                                           | `b3nd://count/<request-uri>` | `number`                                   |
+| `x-*.*` | provider-defined; recommend a synthetic `b3nd://<your-ns>/...` for non-data results |                              |                                            |
 
-For `fn=ls`, the per-item `uri` should be the absolute uri of the matched entry,
-not relative.
+For `fn=ls`, the per-item address is the absolute uri of the matched entry, not
+relative.
+
+### The `b3nd://` namespace
+
+The framework reserves `b3nd://` for any uri it has to invent — count answers,
+observe-batch envelopes, cursors, etc. There is no schema beyond the namespace
+rule; protocols are free to add sub-paths under `b3nd://<your-ns>/`.
+
+| Use                | Address                         | Payload               |
+| ------------------ | ------------------------------- | --------------------- |
+| `fn=count` answer  | `b3nd://count/<uri>`            | `number`              |
+| Observe envelope   | `b3nd://observe`                | `string[]` (uri list) |
+| Provider extension | `b3nd://<ns>/<...>` (suggested) | provider-defined      |
 
 ---
 
@@ -101,23 +126,23 @@ not relative.
 The standard implementation is a switch on `fn`:
 
 ```ts
-import { parseUrl } from "@bandeira-tech/b3nd-core/url";
+import { parseUrl, countUri } from "@bandeira-tech/b3nd-core/url";
+import type { Output } from "@bandeira-tech/b3nd-core";
 
-async read<T>(urls: string[]): Promise<ReadResult<T>[]> {
-  const out: ReadResult<T>[] = [];
+async read<T>(urls: string[]): Promise<Output<T>[]> {
+  const out: Output<T>[] = [];
   for (const url of urls) {
     const parsed = parseUrl(url);
     switch (parsed.fn) {
-      case "read":  out.push(this.readOne<T>(parsed.uri)); break;
+      case "read": {
+        const found = this.readOne<T>(parsed.uri);
+        if (found) out.push(found); // option-A: absence on miss
+        break;
+      }
       case "ls":    out.push(...this.list<T>(parsed));     break;
-      case "count": out.push(this.count(parsed));          break;
+      case "count": out.push(this.count(parsed) as Output<T>); break;
       default:
-        // x-*.* or anything we don't know — return a failure result,
-        // do not throw.
-        out.push({
-          success: false,
-          error: `MyStore: unsupported fn '${parsed.fn}'`,
-        });
+        throw new Error(`MyStore: unsupported fn '${parsed.fn}'`);
     }
   }
   return out;
@@ -146,14 +171,13 @@ a programmer error, let it propagate.
 Spec'd by the framework — every backend should accept these meanings when
 applicable:
 
-| Param    | Type     | Notes                                                   |
-| -------- | -------- | ------------------------------------------------------- |
-| `format` | `string` | For `fn=ls`: `'full'` (default) or `'uris'` (no record) |
-| `limit`  | `number` | Max items returned                                      |
-| `page`   | `number` | Page number — **convention**, see below                 |
+| Param    | Type     | Notes                                                                       |
+| -------- | -------- | --------------------------------------------------------------------------- |
+| `format` | `string` | For `fn=ls`: `'full'` (default) or `'uris'` (Output payload is `undefined`) |
+| `limit`  | `number` | Max items returned                                                          |
+| `page`   | `number` | Page number — **convention**, see below                                     |
 
-Open — interpreted per backend, **throw or fail-result on unsupported values**.
-Don't silently ignore:
+Open — interpreted per backend, **throw on unsupported values**:
 
 | Param       | Type     | Notes                                   |
 | ----------- | -------- | --------------------------------------- |
@@ -168,20 +192,15 @@ Don't silently ignore:
 free to support 0-indexed too, but the helpers (`list(uri, {page: 1})`) and the
 reference `MemoryStore` assume 1-indexed.
 
-### Failure on unsupported params
+### Throw on unsupported params
 
-If a caller asks for `pattern: "foo*"` and you don't support globs, return one
-failure result for that url:
+If a caller asks for `pattern: "foo*"` and you don't support globs, throw:
 
 ```ts
-return [{
-  success: false,
-  error: "MyStore: pattern matching is not supported",
-}];
+throw new Error("MyStore: pattern matching is not supported");
 ```
 
-Don't return a misleading "success with empty results" — that hides the bug from
-the caller.
+Don't silently return empty — that hides the bug from the caller.
 
 ---
 
@@ -222,6 +241,22 @@ namespace clean.
 You can put structured data in your ext values (JSON-encoded, base64, opaque
 cursor strings, …) — the framework treats them as opaque.
 
+### Provider Outputs
+
+Your `x-*` results are still `Output[]`. Address synthetic answers under your
+reserved namespace:
+
+```ts
+// pgScan returns its data Outputs plus a synthetic cursor Output.
+[
+  ["mutable://users/alice", { name: "Alice" }],
+  ["mutable://users/bob", { name: "Bob" }],
+  ["b3nd://pg/cursor/<token>", "abc123"],
+];
+```
+
+The consumer-side sugar (one layer up — see "sugars" below) unpacks the cursor.
+
 ---
 
 ## 6. Capability advertisement
@@ -244,30 +279,30 @@ fn, regardless of advertised support). That may change.
 
 ---
 
-## 7. Failure semantics — when to throw, when to return
+## 7. Failure semantics — when to throw, when to be absent
 
-| Situation                                          | Action                                            |
-| -------------------------------------------------- | ------------------------------------------------- |
-| One url failed, others fine                        | Return per-url `{ success: false, error: "…" }`   |
-| Caller asked for an unsupported `fn` or param      | Return per-url `{ success: false, error: "…" }`   |
-| Transport broke (DB connection lost, network down) | **Throw** — the rig propagates as a batch failure |
-| Empty result for a `fn=ls` over a missing prefix   | Return `[]` (zero items, not a failure)           |
-| Empty result for `fn=count` over a missing prefix  | Return `{ success: true, record: { data: 0 } }`   |
-| `fn=read` on a missing uri                         | Return `{ success: false, error: "Not found" }`   |
+| Situation                                          | Action                                      |
+| -------------------------------------------------- | ------------------------------------------- |
+| Transport broke (DB connection lost, network down) | **Throw** — rig propagates as batch failure |
+| Caller asked for an unsupported `fn` or param      | **Throw** — programmer error                |
+| Malformed url                                      | `parseUrl` throws; let it propagate         |
+| `fn=read` on a missing uri                         | Push nothing (absence)                      |
+| Empty result for a `fn=ls` over a missing prefix   | Return `[]`                                 |
+| Empty result for `fn=count` over a missing prefix  | Push `[countUri(uri), 0]`                   |
+| Domain-level "permission denied", quota, etc.      | Encode in payload by protocol convention    |
 
-The rule of thumb: **the batch is one transaction with the network**. If you can
-answer some urls but not others, answer them. Only throw when you can't answer
-_any_.
+Rule of thumb: **the framework knows two things — Output or throw**. Anything
+richer lives in your payload.
 
 ---
 
 ## 8. A 50-line worked example
 
 ```ts
-import { parseUrl } from "@bandeira-tech/b3nd-core/url";
+import { countUri, parseUrl } from "@bandeira-tech/b3nd-core/url";
 import type {
+  Output,
   ParsedUrl,
-  ReadResult,
   StatusResult,
   Store,
   StoreEntry,
@@ -275,46 +310,39 @@ import type {
 } from "@bandeira-tech/b3nd-core";
 
 class MyStore implements Store {
-  private kv = new Map<string, { data: unknown }>();
+  private kv = new Map<string, unknown>();
 
   write(entries: StoreEntry[]): Promise<StoreWriteResult[]> {
-    for (const e of entries) this.kv.set(e.uri, { data: e.data });
+    for (const e of entries) this.kv.set(e.uri, e.data);
     return Promise.resolve(entries.map(() => ({ success: true })));
   }
 
-  read<T>(urls: string[]): Promise<ReadResult<T>[]> {
-    const out: ReadResult<T>[] = [];
+  read<T>(urls: string[]): Promise<Output<T>[]> {
+    const out: Output<T>[] = [];
     for (const url of urls) {
       const p = parseUrl(url);
       switch (p.fn) {
         case "read": {
-          const r = this.kv.get(p.uri);
-          out.push(
-            r
-              ? { success: true, record: r as { data: T } }
-              : { success: false, error: "Not found" },
-          );
+          if (this.kv.has(p.uri)) out.push([p.uri, this.kv.get(p.uri) as T]);
+          // miss = absence
           break;
         }
         case "ls":
           out.push(...this.ls<T>(p));
           break;
         case "count":
-          out.push(this.count(p) as ReadResult<T>);
+          out.push(this.count(p) as Output<T>);
           break;
         default:
-          out.push({
-            success: false,
-            error: `MyStore: unsupported fn '${p.fn}'`,
-          });
+          throw new Error(`MyStore: unsupported fn '${p.fn}'`);
       }
     }
     return Promise.resolve(out);
   }
 
-  private ls<T>(p: ParsedUrl): ReadResult<T>[] {
+  private ls<T>(p: ParsedUrl): Output<T>[] {
     if (p.params.pattern !== undefined) {
-      return [{ success: false, error: "MyStore: pattern not supported" }];
+      throw new Error("MyStore: pattern not supported");
     }
     const prefix = p.uri.endsWith("/") ? p.uri : `${p.uri}/`;
     let entries = [...this.kv.entries()].filter(([k]) => k.startsWith(prefix));
@@ -327,17 +355,15 @@ class MyStore implements Store {
       entries = entries.slice(start, start + p.params.limit);
     }
     const format = p.params.format ?? "full";
-    return entries.map(([uri, record]) =>
-      format === "uris"
-        ? { success: true, uri }
-        : { success: true, uri, record: record as { data: T } }
+    return entries.map(([uri, payload]) =>
+      format === "uris" ? [uri, undefined as T] : [uri, payload as T]
     );
   }
 
-  private count(p: ParsedUrl): ReadResult<number> {
+  private count(p: ParsedUrl): Output<number> {
     const prefix = p.uri.endsWith("/") ? p.uri : `${p.uri}/`;
     const n = [...this.kv.keys()].filter((k) => k.startsWith(prefix)).length;
-    return { success: true, record: { data: n } };
+    return [countUri(p.uri), n];
   }
 
   delete(uris: string[]) {
@@ -356,8 +382,8 @@ class MyStore implements Store {
 
 The reference `MemoryStore` in
 [`libs/b3nd-client-memory/store.ts`](../libs/b3nd-client-memory/store.ts) is a
-slightly fuller version of this pattern — read it for a working example with
-sort/limit/page tested against the shared store suite.
+slightly fuller version of this pattern — read it for a working example tested
+against the shared store suite.
 
 ---
 
@@ -366,24 +392,33 @@ sort/limit/page tested against the shared store suite.
 The rig will:
 
 - Route urls to the first connection whose pattern accepts the routing key.
-- Run `beforeRead` / `afterRead` hooks per url with the parsed
-  `{ url, uri, fn, params, ext }`.
-- Re-serialize the url from the hook's returned ctx (so a hook can rewrite `fn`
-  or params) before dispatch.
-- Fire `read:success` / `read:error` events.
+- Run `beforeRead` / `afterRead` hooks per url with the parsed `{ url }` ctx
+  (call `parseUrl` inside the hook if you need fields).
+- Re-dispatch the (possibly rewritten) url string the hook returns.
+- Fire `read:success` events per Output.
 - Multiplex observe streams across multiple matching connections.
 
 The rig will **not**:
 
 - Validate `fn` against advertised `fns` — that's your job.
-- Fall through to the next connection on a `success: false` — composing
-  fall-through is an aggregating client's job.
+- Fall through to the next connection on absence — composing fall-through is an
+  aggregating client's job (see `flood()`).
 - Aggregate results across connections (sum counts, dedup ls items, …) — same.
 - Retry, timeout, or rate-limit at the rig level — wrap your client.
 
 ---
 
-## 10. Tests for free
+## 10. Sugars live one layer up
+
+The core ships `read(urls): Output[]` and the url helpers. Higher-level
+ergonomics — `readData<T>(uri) → T | null`, `readCount(uri) → number`, typed
+unwrapping for `b3nd://error/` payloads, etc. — live in a sugar package on top
+of core (e.g. `b3nd-canon`). The framework stays mechanistic; the consumer-side
+wraps however they like.
+
+---
+
+## 11. Tests for free
 
 If you implement `Store`, drop your factory into the shared suite:
 

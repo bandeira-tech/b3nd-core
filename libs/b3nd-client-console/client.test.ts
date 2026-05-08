@@ -40,27 +40,20 @@ Deno.test("ConsoleClient - receive handles multiple messages", async () => {
   assertEquals(logs.length, 3);
 });
 
-Deno.test("ConsoleClient - read returns error per URI (string input)", async () => {
+Deno.test("ConsoleClient - read returns no Output (write-only)", async () => {
+  // ConsoleClient is write-only. Under option-A absence semantics,
+  // every read produces no Output rather than a failure result.
   const client = new ConsoleClient("test");
 
-  const results = await client.read(["mutable://a"]);
+  const single = await client.read(["mutable://a"]);
+  assertEquals(single.length, 0);
 
-  assertEquals(results.length, 1);
-  assertEquals(results[0].success, false);
-  assertEquals(results[0].error, "ConsoleClient is write-only");
-});
-
-Deno.test("ConsoleClient - read returns error per URI (array input)", async () => {
-  const client = new ConsoleClient("test");
-
-  const results = await client.read([
+  const multi = await client.read([
     "mutable://a",
     "mutable://b",
     "mutable://c",
   ]);
-
-  assertEquals(results.length, 3);
-  assertEquals(results.every((r) => r.success === false), true);
+  assertEquals(multi.length, 0);
 });
 
 Deno.test("ConsoleClient - status returns healthy", async () => {

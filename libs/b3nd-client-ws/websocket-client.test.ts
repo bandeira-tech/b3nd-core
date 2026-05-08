@@ -127,9 +127,10 @@ class MockWebSocket {
         };
       },
       read: () => {
-        // Client sends { urls: string[] } (read-url grammar — see url.ts).
+        // Client sends { urls: string[] }; respond with flat Output[]
+        // = [[uri, payload], ...]. Absence = "not found".
         const urls: string[] = request.payload.urls ?? [];
-        const allResults: any[] = [];
+        const out: any[] = [];
 
         for (const url of urls) {
           const qIdx = url.indexOf("?");
@@ -144,39 +145,32 @@ class MockWebSocket {
             const format = params.get("format") ?? "full";
             for (const [storedUri, stored] of this.storage) {
               if (!storedUri.startsWith(prefix)) continue;
-              allResults.push(
-                format === "uris" ? { success: true, uri: storedUri } : {
-                  success: true,
-                  uri: storedUri,
-                  record: { data: stored.data },
-                },
+              out.push(
+                format === "uris" ? [storedUri, undefined] : [
+                  storedUri,
+                  stored.data,
+                ],
               );
             }
           } else if (fn === "count") {
             const prefix = uri.endsWith("/") ? uri : `${uri}/`;
             const n = Array.from(this.storage.keys())
               .filter((k) => k.startsWith(prefix)).length;
-            allResults.push({ success: true, record: { data: n } });
+            out.push([`b3nd://count/${uri}`, n]);
           } else if (fn === "read") {
             const stored = this.storage.get(uri);
-            if (stored) {
-              allResults.push({
-                success: true,
-                uri,
-                record: { data: stored.data },
-              });
-            } else {
-              allResults.push({ success: false, uri, error: "Not found" });
-            }
+            if (stored) out.push([uri, stored.data]);
+            // absence: emit nothing
           } else {
-            allResults.push({
+            return {
+              id: request.id,
               success: false,
               error: `unsupported fn '${fn}'`,
-            });
+            };
           }
         }
 
-        return { id: request.id, success: true, data: allResults };
+        return { id: request.id, success: true, data: out };
       },
       status: {
         id: request.id,

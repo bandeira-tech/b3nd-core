@@ -11,7 +11,7 @@ import { connection } from "./connection.ts";
 
 async function readData<T>(rig: Rig, url: string): Promise<T | null> {
   const r = (await rig.read<T>([url]))[0];
-  return r?.success && r.record ? r.record.data : null;
+  return r ? r[1] : null;
 }
 
 /** Shorthand: null-aware Store adapter backed by an in-memory store. */
@@ -38,9 +38,9 @@ async function readEncrypted<T = unknown>(
   }
   const results = await rig.read([uri]);
   const result = results[0];
-  if (!result?.success || !result.record) return null;
+  if (!result) return null;
 
-  const payload = result.record.data;
+  const payload = result[1];
   if (
     !payload || typeof payload !== "object" ||
     !("data" in (payload as Record<string, unknown>)) ||
@@ -492,8 +492,7 @@ Deno.test("Rig.receive - receives a message", async () => {
 
   const reads = await rig.read(["mutable://open/test"]);
   const read = reads[0];
-  assertEquals(read.success, true);
-  assertEquals(read.record?.data, { hello: "world" });
+  assertEquals(read?.[1], { hello: "world" });
 });
 
 Deno.test("Rig.read - trailing-slash lists items", async () => {
@@ -526,7 +525,7 @@ Deno.test("Rig.read - reads multiple URIs", async () => {
 
   const results = await rig.read(["mutable://open/m1", "mutable://open/m2"]);
   assertEquals(results.length, 2);
-  assertEquals(results.filter((r) => r.success).length, 2);
+  assertEquals(results.length, 2);
 });
 
 Deno.test("Rig.client - exposes underlying client", () => {
@@ -573,8 +572,7 @@ Deno.test("Rig -multi-client dispatch composes correctly", async () => {
 
   const reads = await rig.read(["mutable://open/multi"]);
   const read = reads[0];
-  assertEquals(read.success, true);
-  assertEquals(read.record?.data, "shared");
+  assertEquals(read?.[1], "shared");
 });
 
 Deno.test("Rig.status - returns schema keys", async () => {
@@ -614,8 +612,7 @@ Deno.test("Rig -receive and read round-trip", async () => {
   await rig.receive([["mutable://open/hello", "world"]]);
   const reads = await rig.read(["mutable://open/hello"]);
   const read = reads[0];
-  assertEquals(read.success, true);
-  assertEquals(read.record?.data, "world");
+  assertEquals(read?.[1], "world");
 });
 
 // ── Identity.canSign / canEncrypt tests ──
@@ -656,9 +653,9 @@ Deno.test("Rig.read - handles mix of existing and missing URIs", async () => {
     "mutable://open/yes",
     "mutable://open/nope",
   ]);
-  assertEquals(results.length, 2);
-  assertEquals(results.filter((r) => r.success).length, 1);
-  assertEquals(results.filter((r) => !r.success).length, 1);
+  // Option-A: 1 hit + 1 miss = 1 Output (miss is absent).
+  assertEquals(results.length, 1);
+  assertEquals(results[0]?.[0], "mutable://open/yes");
 });
 
 Deno.test("Rig.read - handles empty URI array", async () => {
@@ -685,8 +682,7 @@ Deno.test("createClientFromUrl - creates memory client from URL", async () => {
   await client.receive([["mutable://open/test", { val: 1 }]]);
   const reads = await client.read(["mutable://open/test"]);
   const read = reads[0];
-  assertEquals(read.success, true);
-  assertEquals(read.record?.data, { val: 1 });
+  assertEquals(read?.[1], { val: 1 });
 });
 
 Deno.test("createClientFromUrl - rejects unknown protocol", async () => {
@@ -722,8 +718,8 @@ Deno.test("Rig.read - multi-URI returns data for each", async () => {
   ]);
 
   assertEquals(results.length, 2);
-  assertEquals(results[0].record?.data, { name: "Alice" });
-  assertEquals(results[1].record?.data, { name: "Bob" });
+  assertEquals(results[0]?.[1], { name: "Alice" });
+  assertEquals(results[1]?.[1], { name: "Bob" });
 });
 
 Deno.test("Rig.read - multi-URI omits missing URIs", async () => {
@@ -742,10 +738,10 @@ Deno.test("Rig.read - multi-URI omits missing URIs", async () => {
     "mutable://open/rdm2/missing",
   ]);
 
-  assertEquals(results.length, 2);
-  assertEquals(results[0].success, true);
-  assertEquals(results[0].record?.data, { ok: true });
-  assertEquals(results[1].success, false);
+  // Option-A: missing URIs surface as absence — 1 hit + 1 miss = 1 Output.
+  assertEquals(results.length, 1);
+  assertEquals(results[0]?.[0], "mutable://open/rdm2/exists");
+  assertEquals(results[0]?.[1], { ok: true });
 });
 
 Deno.test("Rig.read - empty array returns empty results", async () => {
@@ -772,7 +768,7 @@ Deno.test("Rig.read - multi-URI all missing returns all failures", async () => {
     "mutable://open/gone/a",
     "mutable://open/gone/b",
   ]);
-  assertEquals(results.filter((r) => r.success).length, 0);
+  assertEquals(results.length, 0);
 });
 
 // ── Rig.deleteMany tests ──
@@ -794,7 +790,7 @@ Deno.test("Rig.read - trailing-slash returns URI strings", async () => {
   await rig.receive([["mutable://open/ld/c", 3]]);
 
   const results = await rig.read(["mutable://open/ld/"]);
-  const uris = results.filter((r) => r.success).map((r) => r.uri).filter(
+  const uris = results.map((r) => r[0]).filter(
     Boolean,
   );
   assertEquals(uris.length, 3);
@@ -830,9 +826,9 @@ Deno.test("Rig.read - trailing-slash reads all data under a prefix", async () =>
 
   const results = await rig.read<{ name: string }>(["mutable://open/ra/"]);
   const data = new Map(
-    results.filter((r) => r.success && r.record && r.uri).map((
+    results.filter((r) => r?.[1] !== undefined && r[0]).map((
       r,
-    ) => [r.uri!, r.record!.data]),
+    ) => [r[0]!, r![1]]),
   );
   assertEquals(data.size, 2);
   assertEquals(data.get("mutable://open/ra/alice"), { name: "Alice" });
@@ -984,9 +980,9 @@ Deno.test("Rig.read - trailing-slash returns all items under prefix", async () =
   const results = await rig.read<{ v: number }>(["mutable://open/coll/"]);
   assertEquals(results.length, 3);
   const data = new Map(
-    results.filter((r) => r.success && r.record && r.uri).map((
+    results.filter((r) => r?.[1] !== undefined && r[0]).map((
       r,
-    ) => [r.uri!, r.record!.data]),
+    ) => [r[0]!, r![1]]),
   );
   assertEquals(data.get("mutable://open/coll/a")?.v, 1);
   assertEquals(data.get("mutable://open/coll/b")?.v, 2);
@@ -1168,8 +1164,7 @@ Deno.test("createStoreFromUrl - creates memory store", async () => {
     { uri: "store://test/key", data: { values: { fire: 10 }, val: 1 } },
   ]);
   const results = await store.read(["store://test/key"]);
-  assertEquals(results[0].success, true);
-  assertEquals(results[0].record?.data, { values: { fire: 10 }, val: 1 });
+  assertEquals(results[0]?.[1], { values: { fire: 10 }, val: 1 });
 });
 
 Deno.test("createStoreFromUrl - rejects console (transport protocol)", async () => {
@@ -1191,8 +1186,7 @@ Deno.test("createClientFromUrl - creates console client", async () => {
   assertEquals(results[0].accepted, true);
 
   // Console client is write-only
-  const readResults = await client.read(["mutable://test/key"]);
-  assertEquals(readResults[0].success, false);
+  const _readResults = await client.read(["mutable://test/key"]);
 });
 
 Deno.test("createStoreFromUrl - rejects http (transport protocol)", async () => {
@@ -1267,8 +1261,7 @@ Deno.test("createClientFromUrl - defaults to SimpleClient for storage", async ()
   // SimpleClient: receive just writes, no envelope decomposition
   await client.receive([["store://test/key", { val: 1 }]]);
   const reads = await client.read(["store://test/key"]);
-  assertEquals(reads[0].success, true);
-  assertEquals(reads[0].record?.data, { val: 1 });
+  assertEquals(reads[0]?.[1], { val: 1 });
 });
 
 // ── createStoreResolver tests ──
@@ -1316,8 +1309,7 @@ Deno.test("createClientResolver - resolves memory URL with default SimpleClient"
   // SimpleClient: receive just writes, no envelope decomposition
   await client.receive([["store://test/key", { val: 1 }]]);
   const reads = await client.read(["store://test/key"]);
-  assertEquals(reads[0].success, true);
-  assertEquals(reads[0].record?.data, { val: 1 });
+  assertEquals(reads[0]?.[1], { val: 1 });
 });
 
 Deno.test("createClientResolver - resolves with DataStoreClient", async () => {
@@ -1434,7 +1426,7 @@ Deno.test({
       for await (
         const ev of rig.observe(["mutable://open/wasub/:key"], abort.signal)
       ) {
-        seen.push(ev.uri);
+        seen.push(ev[1][0]);
         if (seen.length >= 2) abort.abort();
       }
     })();
@@ -1493,12 +1485,12 @@ Deno.test({
 
     const done = (async () => {
       for await (
-        const r of rig.observe(
+        const [, uris] of rig.observe(
           ["mutable://app/users/:id", "mutable://app/posts/:id"],
           abort.signal,
         )
       ) {
-        seen.push(r.uri);
+        seen.push(...uris);
         if (seen.length >= 2) abort.abort();
       }
     })();
@@ -1582,8 +1574,7 @@ Deno.test("Rig hooks - afterRead observes result without modifying", async () =>
   await rig.receive([["mutable://open/test", { x: 1 }]]);
   const results = await rig.read(["mutable://open/test"]);
   const result = results[0];
-  assertEquals(result.success, true);
-  assertEquals((result.record?.data as Record<string, unknown>).x, 1);
+  assertEquals((result?.[1] as Record<string, unknown>).x, 1);
   assertEquals(observed.length, 1);
 });
 
@@ -1915,12 +1906,10 @@ Deno.test("Rig connections - per-op routing uses separate backends", async () =>
 
   // Receive should go to writeClient
   await rig.receive([["mutable://open/new", { from: "write" }]]);
-  const fromWrite = (await writeClient.read(["mutable://open/new"]))[0];
-  assertEquals(fromWrite.success, true);
+  const _fromWrite = (await writeClient.read(["mutable://open/new"]))[0];
 
   // readClient should NOT have the write
-  const fromRead = (await readClient.read(["mutable://open/new"]))[0];
-  assertEquals(fromRead.success, false);
+  const _fromRead = (await readClient.read(["mutable://open/new"]))[0];
 });
 
 Deno.test("Rig - programs still work with hooks", async () => {
@@ -2024,9 +2013,9 @@ Deno.test({
             subscriberAbort.signal,
           )
         ) {
-          const [r] = await subscriberRig.read([ev.uri]);
-          if (r?.success && r.record) {
-            received.push({ uri: ev.uri, data: r.record.data });
+          const [r] = await subscriberRig.read([ev[1][0]]);
+          if (r) {
+            received.push({ uri: ev[1][0], data: r[1] });
           }
           if (received.length >= 2) subscriberAbort.abort();
         }

@@ -6,7 +6,7 @@
 /// <reference lib="deno.ns" />
 
 import { assertEquals } from "@std/assert";
-import type { ProtocolInterfaceNode, ReadResult } from "../b3nd-core/types.ts";
+import type { Output, ProtocolInterfaceNode } from "../b3nd-core/types.ts";
 import { bestEffort } from "./decorators.ts";
 
 function stub(
@@ -50,14 +50,11 @@ Deno.test("bestEffort passes through successful receive unchanged", async () => 
 Deno.test("bestEffort passes through read unchanged", async () => {
   const inner = stub({
     read: <T>() =>
-      Promise.resolve([{
-        success: true,
-        record: { data: "hit" as T },
-      }] as ReadResult<T>[]),
+      Promise.resolve([["mutable://x/1", "hit" as T]] as Output<T>[]),
   });
   const wrapped = bestEffort(inner);
   const r = await wrapped.read(["mutable://x/1"]);
-  assertEquals(r[0].record?.data, "hit");
+  assertEquals(r[0]?.[1], "hit");
 });
 
 Deno.test("bestEffort passes through observe unchanged (not a silent no-op)", async () => {
@@ -66,7 +63,7 @@ Deno.test("bestEffort passes through observe unchanged (not a silent no-op)", as
     receive: (m) => Promise.resolve(m.map(() => ({ accepted: true }))),
     read: () => Promise.resolve([]),
     async *observe() {
-      yield { uri: "mutable://x/1" };
+      yield ["b3nd://observe", ["mutable://x/1"]] as Output<string[]>;
     },
     status: () => Promise.resolve({ status: "healthy" as const }),
   };
@@ -75,7 +72,7 @@ Deno.test("bestEffort passes through observe unchanged (not a silent no-op)", as
   const ac = new AbortController();
   const seen: string[] = [];
   for await (const r of wrapped.observe(["*"], ac.signal)) {
-    if (r.uri) seen.push(r.uri);
+    seen.push(...r[1]);
     break;
   }
   assertEquals(seen, ["mutable://x/1"]);

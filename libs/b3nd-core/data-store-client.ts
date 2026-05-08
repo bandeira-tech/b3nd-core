@@ -32,8 +32,8 @@
 
 import type {
   Message,
+  Output,
   ProtocolInterfaceNode,
-  ReadResult,
   ReceiveResult,
   StatusResult,
   Store,
@@ -104,7 +104,7 @@ export class DataStoreClient extends ObserveEmitter
     return results;
   }
 
-  read<T = unknown>(urls: string[]): Promise<ReadResult<T>[]> {
+  read<T = unknown>(urls: string[]): Promise<Output<T>[]> {
     return this.store.read<T>(urls);
   }
 

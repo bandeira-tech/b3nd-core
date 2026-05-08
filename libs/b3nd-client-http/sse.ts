@@ -11,10 +11,13 @@
 
 /** A single parsed SSE event. */
 export interface SseEvent {
-  uri: string;
-  data: unknown;
-  ts: number;
-  id: string;
+  /** Single uri (back-compat shape — server may still emit this). */
+  uri?: string;
+  /** Bundled uris (INV package shape). */
+  uris?: string[];
+  data?: unknown;
+  ts?: number;
+  id?: string;
 }
 
 /** Options for opening an SSE stream. */

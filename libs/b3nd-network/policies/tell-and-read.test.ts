@@ -144,15 +144,11 @@ Deno.test("tellAndRead.inbound: null onAnnounce passes through", async () => {
   const events: (string | undefined)[] = [];
   for await (
     const out of sync.inbound.receive!(
-      {
-        success: true,
-        uri: "mutable://x/1",
-        record: { data: "bare" },
-      },
+      ["mutable://x/1", "bare"],
       source,
       ctx,
     )
-  ) events.push(out.uri);
+  ) events.push(out[0]);
   assertEquals(events, ["mutable://x/1"]);
 });
 
@@ -162,8 +158,8 @@ Deno.test("tellAndRead.inbound: onAnnounce pulls the URI and yields fetched cont
 
   const sync = tellAndRead({
     onAnnounce: (ev) => {
-      if (ev.uri?.startsWith("inv://")) {
-        return [(ev.record?.data as { have: string }).have];
+      if (ev[0]?.startsWith("inv://")) {
+        return [(ev?.[1] as { have: string }).have];
       }
       return null;
     },
@@ -175,15 +171,11 @@ Deno.test("tellAndRead.inbound: onAnnounce pulls the URI and yields fetched cont
   const out: { uri?: string; data: unknown }[] = [];
   for await (
     const r of sync.inbound.receive!(
-      {
-        success: true,
-        uri: "inv://anything",
-        record: { data: { have: "hash://x" } },
-      },
+      ["inv://anything", { have: "hash://x" }],
       source,
       ctx,
     )
-  ) out.push({ uri: r.uri, data: r.record?.data });
+  ) out.push({ uri: r[0], data: r?.[1] });
 
   // The announcement does not pass through; the pulled payload does.
   assertEquals(out.length, 1);
@@ -203,11 +195,7 @@ Deno.test("tellAndRead.inbound: empty URI list consumes the announcement silentl
   const out: unknown[] = [];
   for await (
     const r of sync.inbound.receive!(
-      {
-        success: true,
-        uri: "inv://anything",
-        record: { data: { have: "hash://x" } },
-      },
+      ["inv://anything", { have: "hash://x" }],
       source,
       ctx,
     )
@@ -224,8 +212,8 @@ Deno.test("tellAndRead.inbound: multi-URI announcement fans out pulls", async ()
 
   const sync = tellAndRead({
     onAnnounce: (ev) => {
-      if (ev.uri?.startsWith("inv://")) {
-        return (ev.record?.data as { have: string[] }).have;
+      if (ev[0]?.startsWith("inv://")) {
+        return (ev?.[1] as { have: string[] }).have;
       }
       return null;
     },
@@ -237,15 +225,11 @@ Deno.test("tellAndRead.inbound: multi-URI announcement fans out pulls", async ()
   const out: { uri?: string; data: unknown }[] = [];
   for await (
     const r of sync.inbound.receive!(
-      {
-        success: true,
-        uri: "inv://batch",
-        record: { data: { have: ["hash://a", "hash://b"] } },
-      },
+      ["inv://batch", { have: ["hash://a", "hash://b"] }],
       source,
       ctx,
     )
-  ) out.push({ uri: r.uri, data: r.record?.data });
+  ) out.push({ uri: r[0], data: r?.[1] });
 
   out.sort((x, y) => (x.uri ?? "").localeCompare(y.uri ?? ""));
   assertEquals(out, [
@@ -265,11 +249,7 @@ Deno.test("tellAndRead.inbound: read miss on announcement yields nothing", async
   const out: unknown[] = [];
   for await (
     const r of sync.inbound.receive!(
-      {
-        success: true,
-        uri: "inv://x",
-        record: { data: { have: "hash://x" } },
-      },
+      ["inv://x", { have: "hash://x" }],
       source,
       ctx,
     )
@@ -298,8 +278,8 @@ Deno.test("tellAndRead round-trip: A announces hash content, B pulls on demand",
       msgs.map(([uri]) => [`inv://${uri}`, { have: uri }] as Message),
     // Inbound: announcements trigger a read of the announced URI.
     onAnnounce: (ev) => {
-      if (ev.uri?.startsWith("inv://")) {
-        return [(ev.record?.data as { have: string }).have];
+      if (ev[0]?.startsWith("inv://")) {
+        return [(ev?.[1] as { have: string }).have];
       }
       return null;
     },
@@ -326,15 +306,15 @@ Deno.test("tellAndRead round-trip: A announces hash content, B pulls on demand",
     // Poll until B's local store has the pulled content.
     await until(async () => {
       const r = await bLocal.read(["hash://big"]);
-      return r[0]?.success === true;
+      return r.length > 0;
     });
     const r = await bLocal.read(["hash://big"]);
-    assertEquals(r[0].record?.data, { bytes: "the full payload" });
+    assertEquals(r[0]?.[1], { bytes: "the full payload" });
 
     // And the announcement URI never reached B's local store — it was
     // consumed by the policy.
     const invLanded = await bLocal.read(["inv://hash://big"]);
-    assertEquals(invLanded[0].success, false);
+    assertEquals(invLanded.length, 0);
   } finally {
     await unbind();
   }

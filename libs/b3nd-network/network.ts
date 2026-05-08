@@ -26,8 +26,8 @@
 
 import type {
   Message,
+  Output,
   ProtocolInterfaceNode,
-  ReadResult,
 } from "../b3nd-core/types.ts";
 import type { InboundCtx, NetworkOptions, Peer, Policy } from "./types.ts";
 
@@ -108,17 +108,20 @@ async function runPeer(
     .filter((r): r is NonNullable<typeof r> => r !== undefined);
 
   try {
-    for await (const note of peer.client.observe([pattern], signal)) {
+    for await (const [, uris] of peer.client.observe([pattern], signal)) {
       if (signal.aborted) break;
-      // INV: the observe event tells us a uri changed. Pull the
-      // current state from the peer so policies see ReadResult-shaped
-      // events with the content attached.
-      const [fetched] = await peer.client.read([note.uri]);
-      if (!fetched) continue;
-      const ev = { ...fetched, uri: note.uri } as ReadResult<unknown>;
-      for await (const out of foldReceive(ev, hooks, peer, ctx)) {
+      // INV bundles: the observe event lists uris that changed. Pull
+      // the current state from the peer for each so policies see
+      // Outputs with the content attached.
+      for (const noteUri of uris) {
         if (signal.aborted) break;
-        await forward(target, out, onError, peer.id);
+        const fetched = await peer.client.read([noteUri]);
+        for (const ev of fetched) {
+          for await (const out of foldReceive(ev, hooks, peer, ctx)) {
+            if (signal.aborted) break;
+            await forward(target, out, onError, peer.id);
+          }
+        }
       }
     }
   } catch (err) {
@@ -129,20 +132,20 @@ async function runPeer(
 /**
  * Fold `hooks` over `ev`: apply `hooks[0]` to `ev`, then `hooks[1]` to
  * each event yielded, and so on. The result is one merged stream of
- * events the target should receive.
+ * Outputs the target should receive.
  */
 async function* foldReceive(
-  ev: ReadResult<unknown>,
+  ev: Output<unknown>,
   hooks: Array<
     (
-      ev: ReadResult<unknown>,
+      ev: Output<unknown>,
       source: Peer,
       ctx: InboundCtx,
-    ) => AsyncIterable<ReadResult<unknown>>
+    ) => AsyncIterable<Output<unknown>>
   >,
   source: Peer,
   ctx: InboundCtx,
-): AsyncIterable<ReadResult<unknown>> {
+): AsyncIterable<Output<unknown>> {
   if (hooks.length === 0) {
     yield ev;
     return;
@@ -153,15 +156,14 @@ async function* foldReceive(
   }
 }
 
-/** Forward one event into the target's `receive`. Swallows errors via `onError`. */
+/** Forward one Output into the target's `receive`. Swallows errors via `onError`. */
 async function forward(
   target: Pick<ProtocolInterfaceNode, "receive">,
-  ev: ReadResult<unknown>,
+  ev: Output<unknown>,
   onError: (err: Error, ctx: { peerId?: string }) => void,
   peerId: string,
 ): Promise<void> {
-  if (!ev.uri || !ev.record) return;
-  const msg: Message = [ev.uri, ev.record.data];
+  const msg: Message = ev as Message;
   try {
     await target.receive([msg]);
   } catch (err) {

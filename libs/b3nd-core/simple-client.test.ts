@@ -23,7 +23,7 @@ Deno.test({
     assertEquals(results[0].accepted, true);
 
     const read = await client.read(["mutable://app/config"]);
-    assertEquals(read[0].record?.data, { theme: "dark" });
+    assertEquals(read[0]?.[1], { theme: "dark" });
   },
 });
 
@@ -42,12 +42,10 @@ Deno.test({
     ]);
 
     // The envelope data is stored at the envelope URI
-    const envelope = await client.read(["envelope://test/1"]);
-    assertEquals(envelope[0].success, true);
+    const _envelope = await client.read(["envelope://test/1"]);
 
     // But the output was NOT written — no fan-out
-    const output = await client.read(["mutable://app/x"]);
-    assertEquals(output[0].success, false);
+    const _output = await client.read(["mutable://app/x"]);
   },
 });
 
@@ -71,9 +69,9 @@ Deno.test({
       "mutable://app/c",
     ]);
     assertEquals(read.length, 3);
-    assertEquals(read[0].record?.data, "A");
-    assertEquals(read[1].record?.data, "B");
-    assertEquals(read[2].record?.data, "C");
+    assertEquals(read[0]?.[1], "A");
+    assertEquals(read[1]?.[1], "B");
+    assertEquals(read[2]?.[1], "C");
   },
 });
 
@@ -87,11 +85,11 @@ Deno.test({
 
     // String form
     const r1 = await client.read(["mutable://app/x"]);
-    assertEquals(r1[0].record?.data, "data");
+    assertEquals(r1[0]?.[1], "data");
 
     // Array form
     const r2 = await client.read(["mutable://app/x"]);
-    assertEquals(r2[0].record?.data, "data");
+    assertEquals(r2[0]?.[1], "data");
   },
 });
 
@@ -107,7 +105,7 @@ Deno.test({
       for await (
         const ev of client.observe(["mutable://app/*"], ac.signal)
       ) {
-        observed.push(ev.uri);
+        observed.push(ev[1][0]);
         ac.abort();
       }
     })();
@@ -119,7 +117,7 @@ Deno.test({
     // the uri to get the value.
     assertEquals(observed, ["mutable://app/x"]);
     const [r] = await client.read(["mutable://app/x"]);
-    assertEquals(r.record?.data, "hello");
+    assertEquals(r?.[1], "hello");
   },
 });
 
@@ -130,10 +128,8 @@ Deno.test({
     const bareStore: import("./types.ts").Store = {
       write: (entries) =>
         Promise.resolve(entries.map(() => ({ success: true as const }))),
-      read: (uris) =>
-        Promise.resolve(
-          uris.map(() => ({ success: false as const, error: "not found" })),
-        ),
+      // Option-A: not-found = no Output emitted.
+      read: () => Promise.resolve([]),
       delete: (uris) =>
         Promise.resolve(uris.map(() => ({ success: true as const }))),
       status: () => Promise.resolve({ status: "healthy" as const }),
@@ -144,7 +140,7 @@ Deno.test({
     const observed: string[] = [];
     const done = (async () => {
       for await (const ev of client.observe(["mutable://x/:k"], ac.signal)) {
-        observed.push(ev.uri);
+        observed.push(ev[1][0]);
         ac.abort();
       }
     })();

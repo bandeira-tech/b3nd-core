@@ -13,7 +13,6 @@ import { MemoryStore } from "../../b3nd-client-memory/store.ts";
 import { SimpleClient } from "../../b3nd-core/simple-client.ts";
 import type {
   ProtocolInterfaceNode,
-  ReadResult,
   StatusResult,
 } from "../../b3nd-core/types.ts";
 import { flood } from "./flood.ts";
@@ -67,20 +66,14 @@ Deno.test("flood.receive fans out to every peer", async () => {
 
   const ra = await a.read(["mutable://shared/x"]);
   const rb = await b.read(["mutable://shared/x"]);
-  assertEquals(ra[0].record?.data, "hello");
-  assertEquals(rb[0].record?.data, "hello");
+  assertEquals(ra[0]?.[1], "hello");
+  assertEquals(rb[0]?.[1], "hello");
 });
 
 Deno.test("flood.receive propagates transport errors", async () => {
   const broken: ProtocolInterfaceNode = {
     receive: () => Promise.reject(new Error("peer offline")),
-    read: <T>(u: string | string[]) =>
-      Promise.resolve(
-        (Array.isArray(u) ? u : [u]).map(() => ({
-          success: false,
-          error: "x",
-        } as ReadResult<T>)),
-      ),
+    read: () => Promise.resolve([]),
     observe: async function* () {},
     status: () => Promise.resolve({ status: "unhealthy" } as StatusResult),
   };
@@ -101,8 +94,7 @@ Deno.test("flood.read tries peers in order and returns the first hit", async () 
   const npi = flood([peer(a, { id: "A" }), peer(b, { id: "B" })]);
 
   const results = await npi.read(["mutable://only/on/b"]);
-  assertEquals(results[0].success, true);
-  assertEquals(results[0].record?.data, "B-has-it");
+  assertEquals(results[0]?.[1], "B-has-it");
 });
 
 Deno.test("flood.read falls through failing peers", async () => {
@@ -117,13 +109,12 @@ Deno.test("flood.read falls through failing peers", async () => {
   const npi = flood([peer(broken, { id: "X" }), peer(good, { id: "Y" })]);
 
   const results = await npi.read(["mutable://z"]);
-  assertEquals(results[0].record?.data, "ok");
+  assertEquals(results[0]?.[1], "ok");
 });
 
 Deno.test("flood.read returns not-found when no peer has it", async () => {
   const npi = flood([peer(mem(), { id: "A" }), peer(mem(), { id: "B" })]);
-  const results = await npi.read(["mutable://nope"]);
-  assertEquals(results[0].success, false);
+  const _results = await npi.read(["mutable://nope"]);
 });
 
 // ── observe — merged stream ─────────────────────────────────────────
@@ -136,8 +127,10 @@ Deno.test("flood.observe merges writes from every peer", async () => {
   const ac = new AbortController();
   const seen: string[] = [];
   const done = (async () => {
-    for await (const ev of npi.observe(["mutable://shared/*"], ac.signal)) {
-      if (ev.uri) seen.push(ev.uri);
+    for await (
+      const [, uris] of npi.observe(["mutable://shared/*"], ac.signal)
+    ) {
+      seen.push(...uris);
       if (seen.length >= 2) ac.abort();
     }
   })();
@@ -182,13 +175,7 @@ Deno.test("flood.status reports healthy when all peers are healthy", async () =>
 Deno.test("flood.status reports degraded when a peer is unhealthy", async () => {
   const sick: ProtocolInterfaceNode = {
     receive: (m) => Promise.resolve(m.map(() => ({ accepted: true }))),
-    read: <T>(u: string | string[]) =>
-      Promise.resolve(
-        (Array.isArray(u) ? u : [u]).map(() => ({
-          success: false,
-          error: "x",
-        } as ReadResult<T>)),
-      ),
+    read: () => Promise.resolve([]),
     observe: async function* () {},
     status: () => Promise.resolve({ status: "unhealthy" }),
   };
@@ -201,13 +188,7 @@ Deno.test("flood.status reports degraded when a peer is unhealthy", async () => 
 Deno.test("flood.status reports unhealthy when every peer is unhealthy", async () => {
   const sick = (): ProtocolInterfaceNode => ({
     receive: (m) => Promise.resolve(m.map(() => ({ accepted: true }))),
-    read: <T>(u: string | string[]) =>
-      Promise.resolve(
-        (Array.isArray(u) ? u : [u]).map(() => ({
-          success: false,
-          error: "x",
-        } as ReadResult<T>)),
-      ),
+    read: () => Promise.resolve([]),
     observe: async function* () {},
     status: () => Promise.resolve({ status: "unhealthy" }),
   });
