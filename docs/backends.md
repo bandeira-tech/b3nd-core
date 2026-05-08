@@ -44,6 +44,15 @@ with `parseUrl(url)` and dispatch on `fn`.
 Used when you're not just storage — you're a transport, a router, an aggregator.
 Implement the four primitives directly:
 
+> **Aggregator example.** The `flood()` strategy in `b3nd-network` is a working
+> aggregator: it takes a list of peer clients and presents them as one
+> `ProtocolInterfaceNode`, broadcasting `receive`, trying peers in order on
+> `read`, and merging `observe` streams. See
+> [`libs/b3nd-network/policies/flood.ts`](../libs/b3nd-network/policies/flood.ts)
+> for ~150 lines of reference. A memcache-fronted shard pool follows the same
+> shape — wrap your sub-clients, fan-out where useful, first-success-wins where
+> useful.
+
 ```ts
 interface ProtocolInterfaceNode {
   receive(msgs: Message[]): Promise<ReceiveResult[]>;

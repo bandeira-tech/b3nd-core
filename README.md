@@ -153,10 +153,9 @@ const rig = new Rig({
   hooks: {
     beforeReceive: (ctx) => {/* throw to reject */},
     beforeRead: (ctx) => {
-      // ctx is { url, uri, fn, params, ext } — rewrite any field.
-      if (ctx.fn === "ls" && !ctx.params.limit) {
-        return { ctx: { ...ctx, params: { ...ctx.params, limit: 100 } } };
-      }
+      // ctx is just { url }; parseUrl is a cheap pure function — call
+      // it if you need fn/params, return `{ ctx: { url } }` to rewrite.
+      // For invasive transforms, wrap the executing client instead.
     },
     afterRead: (ctx, result) => {/* observe */},
     onError: (ctx) => {/* handle errors */},

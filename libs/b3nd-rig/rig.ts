@@ -21,9 +21,9 @@ import type {
   ReceiveResult,
   StatusResult,
 } from "../b3nd-core/types.ts";
-import { buildUrl, parseUrl, routingKey } from "../b3nd-core/url.ts";
+import { routingKey } from "../b3nd-core/url.ts";
 import type { RigConfig, RigInfo } from "./types.ts";
-import type { ReadCtx, ReceiveCtx, RigHooks, SendCtx } from "./hooks.ts";
+import type { ReceiveCtx, RigHooks, SendCtx } from "./hooks.ts";
 import { resolveHooks, runAfter, runBefore, runOnError } from "./hooks.ts";
 import type { EventHandler, RigEventName } from "./events.ts";
 import { RigEventEmitter } from "./events.ts";
@@ -680,22 +680,14 @@ export class Rig {
    * for the grammar.
    */
   async read<T = unknown>(urls: string[]): Promise<ReadResult<T>[]> {
-    // Before-hook per url. Hooks see the parsed shape and may rewrite
-    // any field; we re-serialize from the returned ctx before dispatch.
+    // Before-hook per url. The hook sees just `{ url }`; if it wants
+    // the parsed view it calls `parseUrl(ctx.url)` itself. Returning
+    // `{ ctx: { url: newUrl } }` rewrites; otherwise the url passes
+    // through unchanged.
     const finalUrls: string[] = [];
-    const ctxs: ReadCtx[] = [];
     for (const url of urls) {
-      const parsed = parseUrl(url);
-      const ctx: ReadCtx = { url, ...parsed };
-      const readCtx = await runBefore(this._hooks.beforeRead, ctx);
-      const finalUrl = buildUrl({
-        uri: readCtx.uri,
-        fn: readCtx.fn,
-        params: readCtx.params,
-        ext: readCtx.ext,
-      });
-      finalUrls.push(finalUrl);
-      ctxs.push({ ...readCtx, url: finalUrl });
+      const ctx = await runBefore(this._hooks.beforeRead, { url });
+      finalUrls.push(ctx.url);
     }
 
     // Execute
@@ -703,10 +695,10 @@ export class Rig {
     try {
       results = await this._dispatch.read<T>(finalUrls);
     } catch (err) {
-      for (const ctx of ctxs) {
+      for (const url of finalUrls) {
         this._events.emit("read:error", {
           op: "read",
-          uri: ctx.uri,
+          uri: routingKey(url),
           error: err instanceof Error ? err.message : String(err),
           ts: Date.now(),
         });
@@ -719,9 +711,9 @@ export class Rig {
     // into many results).
     for (let i = 0; i < results.length; i++) {
       const result = results[i];
-      const ctx = ctxs[Math.min(i, ctxs.length - 1)];
-      const uri = result.uri ?? ctx.uri;
-      await runAfter(this._hooks.afterRead, ctx, result);
+      const requestUrl = finalUrls[Math.min(i, finalUrls.length - 1)];
+      const uri = result.uri ?? routingKey(requestUrl);
+      await runAfter(this._hooks.afterRead, { url: requestUrl }, result);
 
       if (result.success) {
         this._events.emit("read:success", {

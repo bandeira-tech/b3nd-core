@@ -34,7 +34,7 @@ const auth = [await id.sign({ inputs: [], outputs })];
 const envelope = await message({ auth, inputs: [], outputs });
 await rig.send([envelope]); // handler emits the inner outputs
 
-const data = await rig.readData("mutable://myapp/config");
+const [{ record }] = await rig.read(["mutable://myapp/config"]);
 ```
 
 ## Two Core Actions
@@ -62,16 +62,24 @@ await rig.receive([["mutable://open/external", { source: "webhook" }]]);
 ## Observation
 
 ```typescript
-const results = await rig.read<T>(uri); // ReadResult<T>[] (always array)
-const results = await rig.read<T>([u1, u2]); // ReadResult<T>[] (multi)
-const results = await rig.read<T>("prefix/"); // ReadResult<T>[] (trailing slash = list)
+import { count, list, listUris } from "@bandeira-tech/b3nd-core/url";
 
-await rig.readData<T>(uri); // T | null (unwrapped)
-await rig.readOrThrow<T>(uri); // T (throws if missing)
+// Reads always take an array of urls; results in input order, ls
+// expands inline.
+const results = await rig.read<T>([u1, u2]);
 
-await rig.count(uri); // number (trailing-slash count)
-await rig.exists(uri); // boolean
+// Compose helpers for fn-aware reads.
+await rig.read([
+  "mutable://app/users/alice", // fn=read (default)
+  count("mutable://app/users"), // fn=count → record.data: number
+  list("mutable://app/users", { limit: 20 }), // fn=ls → expands inline
+  listUris("mutable://app/users"), // fn=ls&format=uris (no record)
+]);
 ```
+
+The `count`/`list`/`listUris`/`x` helpers build url strings; the executing
+client parses them with `parseUrl` and dispatches on `fn`. See `url.ts` for the
+grammar.
 
 ## Encrypted Operations
 
@@ -93,27 +101,20 @@ const secret = JSON.parse(new TextDecoder().decode(decrypted));
 
 ## Reactive
 
+`observe` is INV-style: each event carries just the uri of an entry that
+changed. Read the uri to learn its current state.
+
 ```typescript
-// Watch a URI for changes (polling with dedup)
-for await (const value of rig.watch<T>(uri, { intervalMs: 2000, signal })) {
-  console.log("Changed:", value);
-}
-
-// Watch a collection (added/removed/changed diffs)
-for await (
-  const snap of rig.watchAll<T>(prefix, { intervalMs: 2000, signal })
-) {
-  console.log(
-    `${snap.items.size} items, +${snap.added.length} -${snap.removed.length}`,
-  );
-}
-
-// Real-time observe (routed to client's native transport)
 const abort = new AbortController();
-for await (const result of rig.observe<T>("mutable://app/*", abort.signal)) {
-  console.log(result.uri, result.record?.data);
+for await (const ev of rig.observe(["mutable://app/*"], abort.signal)) {
+  const [r] = await rig.read([ev.uri]);
+  if (r.success) console.log(ev.uri, r.record?.data);
+  else console.log(ev.uri, "deleted");
 }
 ```
+
+Polling-based watch/watchAll helpers are not provided — compose them on top of
+`observe` + `read` at the call site.
 
 ## Routes
 
@@ -145,16 +146,18 @@ const local = connection(memoryClient, ["local://*", "rig://*"]);
 const rig = new Rig({
   routes: {
     receive: [primary, local], // broadcast to all matching
-    read: [cache, primary, local], // first match wins (cache first)
+    read: [cache, primary, local], // first connection that accepts wins
     observe: [primary, local],
   },
 });
 ```
 
-`receive` broadcasts to every matching connection. `read` tries each matching
-connection in declaration order until one returns a hit (or, for trailing-slash
-list reads, gathers across every match). `observe` delegates to the first
-connection that accepts; the client owns the underlying transport.
+`receive` broadcasts to every matching connection. `read` is sequential per url:
+the first connection whose pattern accepts the routing key gets the request —
+**no fall-through, no aggregation**. Layered storage (memcache → primary →
+local) is the job of an aggregating client like `flood()` (or one you write);
+route to that. `observe` groups urls by the first matching connection and merges
+the streams.
 
 When a single client needs different patterns per op, make separate
 `connection(...)` calls — each binds one pattern list.

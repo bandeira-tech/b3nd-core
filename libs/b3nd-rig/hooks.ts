@@ -14,7 +14,6 @@
  */
 
 import type { B3ndError, Output, ProgramResult } from "../b3nd-core/types.ts";
-import type { ReadParams } from "../b3nd-core/url.ts";
 
 // ── Per-operation context types ──
 
@@ -38,21 +37,18 @@ export interface ReceiveCtx {
 /**
  * Context for a read hook.
  *
- * - `url`     — the full url, including any `fn=`/params query string.
- * - `uri`     — the routing identity (the url without the query string).
- * - `fn`      — resolved function (`read` | `ls` | `count` | `x-...`).
- * - `params`  — standard `ReadParams` parsed from the query string.
- * - `ext`     — `x-*` extension bag passed opaquely to the executing client.
+ * Carries only the `url` — the full url string, including any
+ * `?fn=…&…` query. `parseUrl` is a cheap pure function; call it from
+ * the hook if you need the parsed view. Before-hooks may rewrite the
+ * url by returning `{ ctx: { url: newUrl } }`; the rig dispatches the
+ * returned url unchanged.
  *
- * Before-hooks may rewrite any of these by returning `{ ctx }`. The rig
- * re-serializes the url from the returned fields before dispatch.
+ * If you need to manipulate downstream behavior more invasively, wrap
+ * the executing client itself rather than threading transformations
+ * through the rig.
  */
 export interface ReadCtx {
   url: string;
-  uri: string;
-  fn: string;
-  params: ReadParams;
-  ext: Record<string, string>;
 }
 
 // ── Hook function types ──

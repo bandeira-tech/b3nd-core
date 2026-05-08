@@ -2,13 +2,7 @@ import { assertEquals, assertRejects } from "@std/assert";
 import type { ReadCtx } from "./hooks.ts";
 import { resolveHooks, runAfter, runBefore } from "./hooks.ts";
 
-const baseReadCtx = (uri: string): ReadCtx => ({
-  url: uri,
-  uri,
-  fn: uri.endsWith("/") ? "ls" : "read",
-  params: {},
-  ext: {},
-});
+const baseReadCtx = (url: string): ReadCtx => ({ url });
 
 // ── runBefore ──
 
@@ -43,7 +37,7 @@ Deno.test("runBefore - context replacement works", async () => {
     (_ctx: ReadCtx) => ({ ctx: baseReadCtx("mutable://replaced") }),
     baseReadCtx("mutable://original"),
   );
-  assertEquals(result.uri, "mutable://replaced");
+  assertEquals(result.url, "mutable://replaced");
 });
 
 Deno.test("runBefore - async hook works", async () => {
