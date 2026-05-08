@@ -44,8 +44,7 @@ export const SYNTHETIC_NS = "b3nd://";
  * a `fn=count` answer. The original request uri is preserved as the
  * tail so the answer is self-describing.
  */
-export const countUri = (uri: string): string =>
-  `${SYNTHETIC_NS}count/${uri}`;
+export const countUri = (uri: string): string => `${SYNTHETIC_NS}count/${uri}`;
 
 /**
  * Default synthetic uri for `observe` notification packages. Backends
