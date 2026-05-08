@@ -78,23 +78,25 @@ Deno.test("rig routes receive to correct connection", async () => {
   await rig.receive([["local://app/y", { v: 2 }]]);
 
   // remote has mutable data, local doesn't
-  const r1 = (await remote.read("mutable://open/x"))[0];
+  const r1 = (await remote.read(["mutable://open/x"]))[0];
   assertEquals(r1.success, true);
-  const r2 = (await local.read("mutable://open/x"))[0];
+  const r2 = (await local.read(["mutable://open/x"]))[0];
   assertEquals(r2.success, false);
 
   // local has local data, remote doesn't
-  const r3 = (await local.read("local://app/y"))[0];
+  const r3 = (await local.read(["local://app/y"]))[0];
   assertEquals(r3.success, true);
-  const r4 = (await remote.read("local://app/y"))[0];
+  const r4 = (await remote.read(["local://app/y"]))[0];
   assertEquals(r4.success, false);
 });
 
-Deno.test("rig reads from first matching connection", async () => {
+Deno.test("rig reads from first matching connection (no fall-through)", async () => {
+  // The rig dispatcher is sequential and does not fall through on miss.
+  // Composing fall-through across sources is the job of an aggregating
+  // client (e.g. memcache + shard pool), not the rig.
   const primary = memClient();
   const fallback = memClient();
 
-  // Write directly to fallback (simulating pre-existing data)
   await fallback.receive([["mutable://open/old", { from: "fallback" }]]);
 
   const _route3 = connection(primary, ["mutable://*"]);
@@ -102,27 +104,21 @@ Deno.test("rig reads from first matching connection", async () => {
   const rig = new Rig({
     routes: {
       receive: [_route3],
-      read: [
-        _route3,
-        _route4,
-      ],
+      read: [_route3, _route4],
     },
   });
 
-  // Write through rig goes to primary only (fallback has no receive)
   await rig.receive([["mutable://open/new", { from: "primary" }]]);
 
-  // Read "new" → primary has it (first match)
-  const results1 = await rig.read("mutable://open/new");
-  const r1 = results1[0];
+  // Primary has it → success.
+  const r1 = (await rig.read(["mutable://open/new"]))[0];
   assertEquals(r1.success, true);
   assertEquals(r1.record?.data, { from: "primary" });
 
-  // Read "old" → primary doesn't have it, falls through to fallback
-  const results2 = await rig.read("mutable://open/old");
-  const r2 = results2[0];
-  assertEquals(r2.success, true);
-  assertEquals(r2.record?.data, { from: "fallback" });
+  // Primary doesn't have it; rig stops at primary's miss. To fall back,
+  // wrap the two memClients in an aggregating client and route to that.
+  const r2 = (await rig.read(["mutable://open/old"]))[0];
+  assertEquals(r2.success, false);
 });
 
 Deno.test("rig broadcasts writes to all matching connections", async () => {
@@ -144,9 +140,9 @@ Deno.test("rig broadcasts writes to all matching connections", async () => {
   await rig.receive([["mutable://open/x", { v: 1 }]]);
 
   // Both have the data
-  const r1 = (await primary.read("mutable://open/x"))[0];
+  const r1 = (await primary.read(["mutable://open/x"]))[0];
   assertEquals(r1.success, true);
-  const r2 = (await mirror.read("mutable://open/x"))[0];
+  const r2 = (await mirror.read(["mutable://open/x"]))[0];
   assertEquals(r2.success, true);
 });
 
@@ -170,7 +166,7 @@ Deno.test("rig rejects read for unconnected URI", async () => {
     },
   });
 
-  const results = await rig.read("mutable://open/x");
+  const results = await rig.read(["mutable://open/x"]);
   const result = results[0];
   assertEquals(result.success, false);
 });
@@ -191,7 +187,7 @@ Deno.test("best-effort: local connection enforces even if client accepts everyth
   assertEquals(result.accepted, false);
 
   // Verify nothing was written
-  const readResults = await client.read("hash://sha256/abc");
+  const readResults = await client.read(["hash://sha256/abc"]);
   assertEquals(readResults[0].success, false);
 });
 
@@ -284,7 +280,7 @@ Deno.test("single client via explicit connection still works (catch-all)", async
 
   const [r] = await rig.receive([["mutable://open/x", { v: 1 }]]);
   assertEquals(r.accepted, true);
-  const readResults = await rig.read("mutable://open/x");
+  const readResults = await rig.read(["mutable://open/x"]);
   assertEquals(readResults[0].success, true);
 });
 
@@ -345,7 +341,7 @@ Deno.test("list via trailing-slash read routes through connection", async () => 
   await rig.receive([["mutable://open/a", "one"]]);
   await rig.receive([["mutable://open/b", "two"]]);
 
-  const results = await rig.read("mutable://open/");
+  const results = await rig.read(["mutable://open/"]);
   const successful = results.filter((r) => r.success);
   assertEquals(successful.length >= 2, true);
 });

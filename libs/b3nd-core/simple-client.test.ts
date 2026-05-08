@@ -22,7 +22,7 @@ Deno.test({
     assertEquals(results.length, 1);
     assertEquals(results[0].accepted, true);
 
-    const read = await client.read("mutable://app/config");
+    const read = await client.read(["mutable://app/config"]);
     assertEquals(read[0].record?.data, { theme: "dark" });
   },
 });
@@ -42,11 +42,11 @@ Deno.test({
     ]);
 
     // The envelope data is stored at the envelope URI
-    const envelope = await client.read("envelope://test/1");
+    const envelope = await client.read(["envelope://test/1"]);
     assertEquals(envelope[0].success, true);
 
     // But the output was NOT written — no fan-out
-    const output = await client.read("mutable://app/x");
+    const output = await client.read(["mutable://app/x"]);
     assertEquals(output[0].success, false);
   },
 });
@@ -86,7 +86,7 @@ Deno.test({
     await client.receive([["mutable://app/x", "data"]]);
 
     // String form
-    const r1 = await client.read("mutable://app/x");
+    const r1 = await client.read(["mutable://app/x"]);
     assertEquals(r1[0].record?.data, "data");
 
     // Array form
@@ -102,10 +102,12 @@ Deno.test({
     const client = new SimpleClient(store);
     const ac = new AbortController();
 
-    const observed: { uri?: string; data: unknown }[] = [];
+    const observed: string[] = [];
     const observePromise = (async () => {
-      for await (const result of client.observe("mutable://app/*", ac.signal)) {
-        observed.push({ uri: result.uri, data: result.record?.data });
+      for await (
+        const ev of client.observe(["mutable://app/*"], ac.signal)
+      ) {
+        observed.push(ev.uri);
         ac.abort();
       }
     })();
@@ -113,7 +115,11 @@ Deno.test({
     await client.receive([["mutable://app/x", "hello"]]);
     await observePromise;
 
-    assertEquals(observed, [{ uri: "mutable://app/x", data: "hello" }]);
+    // INV-style: observer learns "this uri changed"; consumer reads
+    // the uri to get the value.
+    assertEquals(observed, ["mutable://app/x"]);
+    const [r] = await client.read(["mutable://app/x"]);
+    assertEquals(r.record?.data, "hello");
   },
 });
 
@@ -135,50 +141,17 @@ Deno.test({
     const client = new SimpleClient(bareStore);
     const ac = new AbortController();
 
-    const observed: unknown[] = [];
+    const observed: string[] = [];
     const done = (async () => {
-      for await (const r of client.observe("mutable://x/:k", ac.signal)) {
-        observed.push(r.record?.data);
+      for await (const ev of client.observe(["mutable://x/:k"], ac.signal)) {
+        observed.push(ev.uri);
         ac.abort();
       }
     })();
 
     await client.receive([["mutable://x/a", 42]]);
     await done;
-    assertEquals(observed, [42]);
-  },
-});
-
-Deno.test({
-  name: "SimpleClient - observe carries the payload from the write",
-  fn: async () => {
-    const store = new MemoryStore();
-    const client = new SimpleClient(store);
-    const ac = new AbortController();
-
-    let seenPayload: unknown;
-    const done = (async () => {
-      for await (
-        const r of client.observe("mutable://tokens/:id", ac.signal)
-      ) {
-        seenPayload = r.record?.data;
-        ac.abort();
-      }
-    })();
-
-    // Conserved quantities live inside the payload (RFC 001).
-    await client.receive([
-      ["mutable://tokens/1", {
-        values: { fire: 75, usd: 25 },
-        label: "payload",
-      }],
-    ]);
-    await done;
-
-    assertEquals(seenPayload, {
-      values: { fire: 75, usd: 25 },
-      label: "payload",
-    });
+    assertEquals(observed, ["mutable://x/a"]);
   },
 });
 

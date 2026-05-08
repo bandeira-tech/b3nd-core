@@ -256,7 +256,7 @@ Deno.test("network() exposes source.client.read for side-pulls", async () => {
     async *receive(ev, source) {
       if (ev.uri?.startsWith("inv://")) {
         const want = (ev.record?.data as { have: string }).have;
-        const results = await source.client.read<unknown>(want);
+        const results = await source.client.read<unknown>([want]);
         for (const r of results) if (r.success) yield { ...r, uri: want };
         return;
       }
@@ -285,7 +285,7 @@ Deno.test("policies carry their own data dependencies via closure", async () => 
 
   const policyWithStore = (store: typeof localStore): Policy => ({
     async *receive(ev) {
-      const existing = await store.read<string>("mutable://known");
+      const existing = await store.read<string>(["mutable://known"]);
       if (existing[0]?.success && ev.uri) {
         yield {
           success: true,
@@ -469,10 +469,10 @@ Deno.test("network() persists bridged writes through the rig pipeline", async ()
   try {
     await a.receive([["mutable://k/1", { v: 1 }]]);
     await until(async () => {
-      const r = await rig.read("mutable://k/1");
+      const r = await rig.read(["mutable://k/1"]);
       return r[0]?.success === true;
     });
-    const r = await rig.read("mutable://k/1");
+    const r = await rig.read(["mutable://k/1"]);
     assertEquals(r[0].record?.data, { v: 1 });
   } finally {
     await unbind();

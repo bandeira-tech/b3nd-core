@@ -104,9 +104,8 @@ export class DataStoreClient extends ObserveEmitter
     return results;
   }
 
-  read<T = unknown>(uris: string | string[]): Promise<ReadResult<T>[]> {
-    const uriList = Array.isArray(uris) ? uris : [uris];
-    return this.store.read<T>(uriList);
+  read<T = unknown>(urls: string[]): Promise<ReadResult<T>[]> {
+    return this.store.read<T>(urls);
   }
 
   status(): Promise<StatusResult> {

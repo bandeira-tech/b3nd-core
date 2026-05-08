@@ -14,7 +14,9 @@ the `ProtocolInterfaceNode` (PIN) interface.
 ```typescript
 import {
   connection,
+  count,
   DataStoreClient,
+  list,
   MemoryStore,
   Rig,
 } from "@bandeira-tech/b3nd-core";
@@ -28,26 +30,87 @@ const rig = new Rig({
   },
 });
 
-await rig.receive([["mutable://open/greeting", { text: "Hello" }]]);
-const data = await rig.readData("mutable://open/greeting");
-// { text: "Hello" }
+await rig.receive([["mutable://open/users/alice", { name: "Alice" }]]);
+await rig.receive([["mutable://open/users/bob", { name: "Bob" }]]);
+
+// Heterogeneous batch in one call: profile + count + listing.
+const [profile, total, ...users] = await rig.read([
+  "mutable://open/users/alice",
+  count("mutable://open/users"),
+  list("mutable://open/users", { limit: 10, sortBy: "uri" }),
+]);
+
+profile.record?.data; // { name: "Alice" }
+total.record?.data; // 2
+users.map((r) => r.uri); // ["mutable://open/users/alice", "mutable://open/users/bob"]
+```
+
+### URL grammar
+
+Reads and observes accept _urls_: a uri plus a query string carrying a function
+(`fn=`) and parameters. The uri is the routing identity; the query is
+request-time-only.
+
+```
+mutable://users/alice                          → fn=read (default)
+mutable://users/?fn=count                      → count under prefix
+mutable://users/?format=uris&limit=12          → ls, uri-only, paginated
+mutable://feed/?fn=x-ig.rank&x-ig.cursor=eyJ   → provider extension
+```
+
+Reserved fns: `read`, `ls`, `count`. Anything beginning with `x-` is a
+provider-defined extension. Build urls with the helpers (`count`, `list`,
+`listUris`, `x`) — see [`url.ts`](./libs/b3nd-core/url.ts).
+
+```typescript
+import { count, list, listUris, x } from "@bandeira-tech/b3nd-core/url";
+
+pin.read([
+  "instagram://users/alice", // simple read
+  count("instagram://users/alice/posts/"), // count of posts
+  listUris("instagram://users/alice/posts/", {
+    limit: 12,
+    sortBy: "timestamp",
+    sortOrder: "desc",
+  }), // first page of post uris (no payloads)
+  x("instagram://hashtags/coffee/", "x-ig.rank", {
+    limit: 30,
+    ext: { "x-ig.cursor": "eyJ…" },
+  }), // provider extension
+]);
+```
+
+### Observe (INV-style)
+
+`observe` notifies you that a uri changed; you read the uri to learn its current
+state. No payload on the wire — the read path is the single source of truth.
+
+```typescript
+const ac = new AbortController();
+for await (const ev of pin.observe(["mutable://app/*"], ac.signal)) {
+  const [r] = await pin.read([ev.uri]);
+  if (r.success) console.log(ev.uri, r.record?.data);
+  else console.log(ev.uri, "deleted");
+}
 ```
 
 ### Connections
 
-Connections bind clients to URI patterns. The rig routes automatically -- writes
-broadcast to all matching connections, reads try each in order.
+Connections bind clients to URI patterns. The rig routes per operation:
+
+- **receive** — broadcast to every matching connection.
+- **read** — for each url, the first connection that accepts the routing key
+  wins. **No fall-through, no aggregation.** Compose a memcache + shards
+  aggregator as its own client and route to that if you want layered storage.
+- **observe** — urls are grouped by the first matching connection;
+  per-connection streams are merged into one.
 
 ```typescript
 const rig = new Rig({
   routes: {
-    receive: [
-      connection(postgresClient, ["mutable://*", "hash://*"]),
-    ],
-    read: [
-      connection(memoryClient, ["mutable://*", "hash://*"]), // fast cache first
-      connection(postgresClient, ["mutable://*", "hash://*"]), // fallback
-    ],
+    receive: [connection(postgresClient, ["mutable://*", "hash://*"])],
+    read: [connection(postgresClient, ["mutable://*", "hash://*"])],
+    observe: [connection(postgresClient, ["mutable://*", "hash://*"])],
   },
 });
 ```
@@ -59,12 +122,12 @@ decide what each classification code means operationally.
 
 ```typescript
 const rig = new Rig({
-  routes: { ... },
+  routes: {/* ... */},
   programs: {
     "store://balance": balanceProgram,
   },
   handlers: {
-    "balance:valid": async (msg) => { /* persist */ },
+    "balance:valid": async (msg) => [msg], // persist as-is
   },
 });
 ```
@@ -86,18 +149,23 @@ const valid = await id.verify(
 
 ```typescript
 const rig = new Rig({
-  routes: { ... },
+  routes: {/* ... */},
   hooks: {
-    beforeReceive: (ctx) => { /* throw to reject */ },
-    afterRead: (ctx, result) => { /* observe */ },
-    onError: (ctx) => { /* handle errors */ },
+    beforeReceive: (ctx) => {/* throw to reject */},
+    beforeRead: (ctx) => {
+      // ctx is just { url }; parseUrl is a cheap pure function — call
+      // it if you need fn/params, return `{ ctx: { url } }` to rewrite.
+      // For invasive transforms, wrap the executing client instead.
+    },
+    afterRead: (ctx, result) => {/* observe */},
+    onError: (ctx) => {/* handle errors */},
   },
   on: {
     "receive:success": [(e) => notifyPeers(e)],
     "*:error": [(e) => alertOps(e)],
   },
   reactions: {
-    "mutable://app/users/:id": async (output) => { /* triggered on write */ },
+    "mutable://app/users/:id": async (output) => {/* triggered on write */},
   },
 });
 ```
@@ -114,6 +182,15 @@ import { httpApi } from "@bandeira-tech/b3nd-core";
 Deno.serve({ port: 9942 }, httpApi(rig));
 ```
 
+Endpoints:
+
+```
+GET  /api/v1/status                → rig.status()
+POST /api/v1/receive               → rig.receive([[uri, payload], ...])
+POST /api/v1/read                  → body { urls } → ReadResult[]
+GET  /api/v1/observe/:pattern      → SSE stream of { uri } events
+```
+
 Returns a standard `(Request) => Promise<Response>` handler. Works with
 Deno.serve, Hono, Express, Cloudflare Workers.
 
@@ -124,8 +201,8 @@ Peer-to-peer replication with pluggable policies.
 ```typescript
 import { flood, network, peer } from "@bandeira-tech/b3nd-core";
 
-const net = network(localRig, [
-  peer(remoteClient, { patterns: ["mutable://*"] }),
+const stop = network(localRig, [
+  peer(remoteClient),
 ], [flood()]);
 ```
 
@@ -133,7 +210,7 @@ const net = network(localRig, [
 
 | Library               | Description                                                               |
 | --------------------- | ------------------------------------------------------------------------- |
-| `b3nd-core`           | Types, encoding, binary, client base classes, ObserveEmitter              |
+| `b3nd-core`           | Types, url grammar, encoding, binary, client base classes, ObserveEmitter |
 | `b3nd-rig`            | Rig, Identity, connections, hooks, events, reactions, HTTP API, factories |
 | `b3nd-network`        | `network()`, `peer()`, flood, path-vector, tell-and-read policies         |
 | `b3nd-client-memory`  | In-memory Store (no external dependencies)                                |
@@ -145,38 +222,44 @@ const net = network(localRig, [
 
 Server-side composition and transports live in
 [@bandeira-tech/b3nd-servers](https://github.com/bandeira-tech/b3nd-servers).
-Subpaths: `.` (`createServers`, `ServerResolver`, `withCors`), `./http`
-(`httpServer`), `./grpc/server` (`grpcServer`), `./grpc/api` (universal
-`grpcApi`), `./grpc/client` (`GrpcClient`), `./grpc/proto` (wire schema).
-The universal slice ships to JSR + NPM; the `Deno.serve`-using slice is
-JSR-only.
-
-Core itself only ships the pure `httpApi(rig)` request handler — feed it
-to any HTTP runtime (Deno, Hono, Express, Cloudflare Workers, …).
+Core itself only ships the pure `httpApi(rig)` request handler — feed it to any
+HTTP runtime (Deno, Hono, Express, Cloudflare Workers, …).
 
 ## Subpath Exports
 
 ```typescript
-import { ... } from "@bandeira-tech/b3nd-core";             // everything
-import type { ... } from "@bandeira-tech/b3nd-core/types";   // types only
-import { ... } from "@bandeira-tech/b3nd-core/encoding";     // hex encoding
-import { ... } from "@bandeira-tech/b3nd-core/binary";       // binary encoding
-import { ... } from "@bandeira-tech/b3nd-core/network";      // network primitives
+import { ... } from "@bandeira-tech/b3nd-core";              // everything
+import type { ... } from "@bandeira-tech/b3nd-core/types";    // types only
+import { ... } from "@bandeira-tech/b3nd-core/url";           // url grammar + helpers
+import { ... } from "@bandeira-tech/b3nd-core/encoding";      // hex encoding
+import { ... } from "@bandeira-tech/b3nd-core/binary";        // binary encoding
+import { ... } from "@bandeira-tech/b3nd-core/network";       // network primitives
 import { ... } from "@bandeira-tech/b3nd-core/client-console"; // console client
 ```
+
+## Building a backend
+
+If you're writing a b3nd-store (Postgres, IndexedDB, S3, etc.) — see
+[`docs/backends.md`](./docs/backends.md). It covers the `read(urls)` contract,
+the reserved `fn` set, which params are spec'd vs. open, the extension recipe,
+and capability advertisement.
 
 ## Development
 
 ```bash
-deno check src/mod.ts       # Type check
-deno test libs/              # Run tests
+deno task test        # Run tests
+deno task check       # Type check
+deno fmt --check mod.ts libs/
+deno lint mod.ts libs/
 ```
 
 ## Project Structure
 
 ```
-src/           # Entry points and subpath re-exports
-libs/          # 13 libraries (see table above)
+mod.ts          # Main entry point + subpath re-exports
+rig.ts          # Rig subpath
+client-*.ts     # Client subpaths
+libs/           # Source for all libraries (see table above)
 ```
 
 ## Related

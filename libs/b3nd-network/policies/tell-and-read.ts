@@ -157,7 +157,7 @@ export function tellAndRead(opts: TellAndReadOptions): TellAndReadBundle {
         const pulls = await Promise.all(
           result.map(async (uri) => ({
             uri,
-            results: await source.client.read<unknown>(uri),
+            results: await source.client.read<unknown>([uri]),
           })),
         );
         for (const { uri, results } of pulls) {

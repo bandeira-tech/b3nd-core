@@ -31,7 +31,9 @@ export const bestEffort: PeerDecorator = (
       return msgs.map(() => ({ accepted: true }));
     }
   },
-  read: (uris) => client.read(uris),
-  observe: (pattern, signal) => client.observe(pattern, signal),
+  read: (urls) => client.read(urls),
+  observe: (urls, signal) => client.observe(urls, signal),
+  // bestEffort decorator preserves the underlying client's observe
+  // and read shape; the only enhancement is non-fatal receive.
   status: () => client.status(),
 });

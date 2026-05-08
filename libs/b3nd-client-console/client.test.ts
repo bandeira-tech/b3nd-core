@@ -43,7 +43,7 @@ Deno.test("ConsoleClient - receive handles multiple messages", async () => {
 Deno.test("ConsoleClient - read returns error per URI (string input)", async () => {
   const client = new ConsoleClient("test");
 
-  const results = await client.read("mutable://a");
+  const results = await client.read(["mutable://a"]);
 
   assertEquals(results.length, 1);
   assertEquals(results[0].success, false);
@@ -75,7 +75,7 @@ Deno.test("ConsoleClient - observe returns empty async iterable", async () => {
   const client = new ConsoleClient("test");
 
   const items: unknown[] = [];
-  for await (const item of client.observe("mutable://test/")) {
+  for await (const item of client.observe(["mutable://test/"])) {
     items.push(item);
   }
 

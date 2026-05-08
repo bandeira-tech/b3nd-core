@@ -13,8 +13,25 @@ export interface WriteResult<T = unknown> {
 }
 
 /**
+ * Observation event — emitted by `observe(urls)` when an entry under
+ * a watched routing key changes.
+ *
+ * Carries the uri only, INV-style. The observer reads the entity at
+ * that uri to learn its current state (or `success:false` if it was
+ * deleted). No payload is included on the wire — this keeps the
+ * notification cheap and the read path the single source of truth.
+ */
+export interface ObserveEvent {
+  uri: string;
+}
+
+/**
  * Result of a read operation.
- * `uri` is present when the result comes from a list (trailing-slash read).
+ *
+ * `uri` is present when the result describes a specific entry within a
+ * larger response (e.g. items returned from `fn=ls`). `record` is
+ * omitted when the executing client is asked for a uri-only listing
+ * (`fn=ls&format=uris`). For `fn=count`, `record.data` is a number.
  */
 export interface ReadResult<T> {
   success: boolean;
@@ -25,33 +42,6 @@ export interface ReadResult<T> {
 }
 
 /**
- * Result for a single URI in a multi-read operation
- */
-export type ReadMultiResultItem<T = unknown> =
-  | {
-    uri: string;
-    success: true;
-    record: { data: T };
-  }
-  | { uri: string; success: false; error: string };
-
-/**
- * Result of reading multiple URIs in a single operation
- */
-export interface ReadMultiResult<T = unknown> {
-  /** true if at least one read succeeded */
-  success: boolean;
-  /** Per-URI results */
-  results: ReadMultiResultItem<T>[];
-  /** Summary statistics */
-  summary: {
-    total: number;
-    succeeded: number;
-    failed: number;
-  };
-}
-
-/**
  * Result of a delete operation
  */
 export interface DeleteResult {
@@ -59,42 +49,6 @@ export interface DeleteResult {
   error?: string;
   errorDetail?: B3ndError;
 }
-
-/**
- * Item returned from list operations
- */
-export interface ListItem {
-  uri: string;
-}
-
-/**
- * Options for list operations
- */
-export interface ListOptions {
-  page?: number;
-  limit?: number;
-  pattern?: string;
-  sortBy?: "name" | "timestamp";
-  sortOrder?: "asc" | "desc";
-}
-
-/**
- * Result of a list operation
- */
-export type ListResult =
-  | {
-    success: true;
-    data: ListItem[];
-    pagination: {
-      page: number;
-      limit: number;
-      total?: number;
-    };
-  }
-  | {
-    success: false;
-    error: string;
-  };
 
 /**
  * Health status response
@@ -109,11 +63,17 @@ export interface HealthStatus {
  * Status response — replaces health() + getSchema().
  * Each client reports its health + capabilities.
  * The rig aggregates and adds schema info.
+ *
+ * `fns` advertises the set of read functions this node supports
+ * (`read`, `ls`, `count`, plus any provider-defined `x-*`). Clients
+ * may use it to validate a request before dispatch or to surface
+ * capability info to humans/diagnostic UIs.
  */
 export interface StatusResult {
   status: "healthy" | "degraded" | "unhealthy";
   message?: string;
   schema?: string[];
+  fns?: string[];
   details?: Record<string, unknown>;
 }
 
@@ -139,9 +99,9 @@ export type Message<D = unknown> = Output<D>;
 
 /**
  * Read function for storage lookups.
- * Single-URI convenience — returns first result from read().
+ * Single-url convenience used by program authors — wraps `read([url])[0]`.
  */
-export type ReadFn = <T = unknown>(uri: string) => Promise<ReadResult<T>>;
+export type ReadFn = <T = unknown>(url: string) => Promise<ReadResult<T>>;
 
 /**
  * Receive function — batch of messages through the rig pipeline.
@@ -215,8 +175,8 @@ export interface ReceiveResult {
  *
  * Four primitives:
  * - `receive` — all state changes (writes)
- * - `read`    — all queries (single, multi, list via trailing slash)
- * - `observe` — stream of changes matching a pattern (client handles transport)
+ * - `read`    — all queries; urls carry the function and parameters
+ * - `observe` — stream of changes for a set of urls
  * - `status`  — health + capabilities
  *
  * All B3nd clients (Memory, HTTP, WebSocket, Postgres, IndexedDB, etc.)
@@ -238,37 +198,58 @@ export interface ProtocolInterfaceNode {
   receive(msgs: Message[]): PromiseLike<ReceiveResult[]>;
 
   /**
-   * Read data from one or more URIs.
+   * Read a batch of urls. A url is a uri plus a query string of read
+   * parameters (`fn`, `limit`, `page`, `format`, `x-*` extensions, ...).
+   * See `./url.ts` for the grammar and helpers.
    *
-   * - Single URI: `read("mutable://open/users/alice")` → one result
-   * - Multiple URIs: `read(["mutable://x", "hash://y"])` → batch results
-   * - Trailing slash: `read("mutable://open/users/")` → list all under path
+   * The `fn` directs the executing client:
+   * - `read`  — point read; `record.data` is the value.
+   * - `ls`    — list under a prefix; one result per match. `format=full`
+   *             includes records, `format=uris` omits them.
+   * - `count` — single result with `record.data: number`.
+   * - `x-*`   — provider-defined; client throws if unsupported.
    *
-   * Always returns an array of results, one per resolved URI.
+   * Returns one or more `ReadResult`s per url, in input order. `ls`
+   * expands to multiple results; `read` and `count` produce exactly one.
+   *
+   * @example
+   * ```ts
+   * import { count, listUris } from "@bandeira-tech/b3nd-core/url";
+   * const results = await pin.read([
+   *   "mutable://users/alice",
+   *   count("mutable://users/alice/posts/"),
+   *   listUris("mutable://users/alice/posts/", { limit: 12 }),
+   * ]);
+   * ```
    */
-  read<T = unknown>(uris: string | string[]): Promise<ReadResult<T>[]>;
+  read<T = unknown>(urls: string[]): Promise<ReadResult<T>[]>;
 
   /**
-   * Observe changes matching a URI pattern.
+   * Observe a batch of urls — INV-style notification. Yields the uri
+   * of any entry under a watched routing key whose state changed
+   * (write, delete, or update). The observer reads that uri to learn
+   * the new state.
    *
-   * Returns an async iterable that yields `ReadResult` items as changes
-   * arrive. The client handles the transport — SSE for HTTP, internal
-   * events for memory, LISTEN/NOTIFY for Postgres, etc.
+   * No payload, no fn-aware shaping: the `fn`/params on each url are
+   * not interpreted by the framework — only the routing key is used
+   * for matching. Backends are free to inspect them, but portable
+   * code should treat observe as "tell me which uris changed".
    *
    * The `signal` controls lifecycle — abort to stop observing.
    *
    * @example
    * ```ts
    * const abort = new AbortController();
-   * for await (const result of client.observe("mutable://market/*", abort.signal)) {
-   *   console.log(result.uri, result.record.data);
+   * for await (const ev of client.observe(["mutable://market/*"], abort.signal)) {
+   *   const [{ record }] = await client.read([ev.uri]);
+   *   console.log(ev.uri, record?.data);
    * }
    * ```
    */
-  observe<T = unknown>(
-    pattern: string,
+  observe(
+    urls: string[],
     signal: AbortSignal,
-  ): AsyncIterable<ReadResult<T>>;
+  ): AsyncIterable<ObserveEvent>;
 
   /**
    * Status — health + capabilities.
@@ -356,12 +337,12 @@ export interface Store {
   write(entries: StoreEntry[]): Promise<StoreWriteResult[]>;
 
   /**
-   * Read data from URIs in batch. Returns one result per URI.
+   * Read a batch of urls. See `./url.ts` for the grammar.
    *
-   * Trailing-slash URIs list all entries under that path prefix —
-   * the result array may contain multiple items for a single input URI.
+   * The result array may contain more entries than the input when
+   * `fn=ls` expands a prefix to its members.
    */
-  read<T = unknown>(uris: string[]): Promise<ReadResult<T>[]>;
+  read<T = unknown>(urls: string[]): Promise<ReadResult<T>[]>;
 
   /**
    * Delete URIs in batch. Returns one result per URI.
@@ -554,6 +535,8 @@ export interface WebSocketRequest {
   type:
     | "receive"
     | "read"
+    | "observe"
+    | "observe-cancel"
     | "status";
   payload: unknown;
 }

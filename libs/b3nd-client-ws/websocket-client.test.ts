@@ -127,23 +127,37 @@ class MockWebSocket {
         };
       },
       read: () => {
-        // Client always sends { uris: [...] }
-        const uris: string[] = request.payload.uris ?? [request.payload.uri];
+        // Client sends { urls: string[] } (read-url grammar — see url.ts).
+        const urls: string[] = request.payload.urls ?? [];
         const allResults: any[] = [];
 
-        for (const uri of uris) {
-          if (uri.endsWith("/")) {
-            // Trailing slash = list
+        for (const url of urls) {
+          const qIdx = url.indexOf("?");
+          const uri = qIdx < 0 ? url : url.slice(0, qIdx);
+          const params = new URLSearchParams(
+            qIdx < 0 ? "" : url.slice(qIdx + 1),
+          );
+          const fn = params.get("fn") ?? (uri.endsWith("/") ? "ls" : "read");
+
+          if (fn === "ls") {
+            const prefix = uri.endsWith("/") ? uri : `${uri}/`;
+            const format = params.get("format") ?? "full";
             for (const [storedUri, stored] of this.storage) {
-              if (storedUri.startsWith(uri)) {
-                allResults.push({
+              if (!storedUri.startsWith(prefix)) continue;
+              allResults.push(
+                format === "uris" ? { success: true, uri: storedUri } : {
                   success: true,
                   uri: storedUri,
                   record: { data: stored.data },
-                });
-              }
+                },
+              );
             }
-          } else {
+          } else if (fn === "count") {
+            const prefix = uri.endsWith("/") ? uri : `${uri}/`;
+            const n = Array.from(this.storage.keys())
+              .filter((k) => k.startsWith(prefix)).length;
+            allResults.push({ success: true, record: { data: n } });
+          } else if (fn === "read") {
             const stored = this.storage.get(uri);
             if (stored) {
               allResults.push({
@@ -154,6 +168,11 @@ class MockWebSocket {
             } else {
               allResults.push({ success: false, uri, error: "Not found" });
             }
+          } else {
+            allResults.push({
+              success: false,
+              error: `unsupported fn '${fn}'`,
+            });
           }
         }
 

@@ -9,6 +9,11 @@ import { MemoryStore } from "../b3nd-client-memory/store.ts";
 import { DataStoreClient } from "../b3nd-core/data-store-client.ts";
 import { connection } from "./connection.ts";
 
+async function readData<T>(rig: Rig, url: string): Promise<T | null> {
+  const r = (await rig.read<T>([url]))[0];
+  return r?.success && r.record ? r.record.data : null;
+}
+
 /** Shorthand: null-aware Store adapter backed by an in-memory store. */
 function memClient() {
   return new DataStoreClient(new MemoryStore());
@@ -31,7 +36,7 @@ async function readEncrypted<T = unknown>(
       "readEncrypted: identity has no encryption/decryption keys.",
     );
   }
-  const results = await rig.read(uri);
+  const results = await rig.read([uri]);
   const result = results[0];
   if (!result?.success || !result.record) return null;
 
@@ -485,7 +490,7 @@ Deno.test("Rig.receive - receives a message", async () => {
   }]]);
   assertEquals(result.accepted, true);
 
-  const reads = await rig.read("mutable://open/test");
+  const reads = await rig.read(["mutable://open/test"]);
   const read = reads[0];
   assertEquals(read.success, true);
   assertEquals(read.record?.data, { hello: "world" });
@@ -502,7 +507,7 @@ Deno.test("Rig.read - trailing-slash lists items", async () => {
   await rig.receive([["mutable://open/a", 1]]);
   await rig.receive([["mutable://open/b", 2]]);
 
-  const results = await rig.read("mutable://open/");
+  const results = await rig.read(["mutable://open/"]);
   assertEquals(results.length, 2);
 });
 
@@ -566,7 +571,7 @@ Deno.test("Rig -multi-client dispatch composes correctly", async () => {
   });
   await rig.receive([["mutable://open/multi", "shared"]]);
 
-  const reads = await rig.read("mutable://open/multi");
+  const reads = await rig.read(["mutable://open/multi"]);
   const read = reads[0];
   assertEquals(read.success, true);
   assertEquals(read.record?.data, "shared");
@@ -607,7 +612,7 @@ Deno.test("Rig -receive and read round-trip", async () => {
     },
   });
   await rig.receive([["mutable://open/hello", "world"]]);
-  const reads = await rig.read("mutable://open/hello");
+  const reads = await rig.read(["mutable://open/hello"]);
   const read = reads[0];
   assertEquals(read.success, true);
   assertEquals(read.record?.data, "world");
@@ -634,33 +639,6 @@ Deno.test("Identity.canEncrypt - false for public-only identity", () => {
   const publicId = Identity.publicOnly({ signing: "ab".repeat(32) });
   assertEquals(publicId.canEncrypt, false);
 });
-
-// ── Rig.exists tests ──
-
-Deno.test("Rig.exists - returns true for existing data", async () => {
-  const _route45 = connection(memClient(), ["*"]);
-  const rig = new Rig({
-    routes: {
-      receive: [_route45],
-      read: [_route45],
-    },
-  });
-  await rig.receive([["mutable://open/check", { present: true }]]);
-  assertEquals(await rig.exists("mutable://open/check"), true);
-});
-
-Deno.test("Rig.exists - returns false for missing data", async () => {
-  const _route46 = connection(memClient(), ["*"]);
-  const rig = new Rig({
-    routes: {
-      receive: [_route46],
-      read: [_route46],
-    },
-  });
-  assertEquals(await rig.exists("mutable://open/nonexistent"), false);
-});
-
-// rig.delete() no longer exists — Rig.exists after delete test removed
 
 // ── Rig.read multi-URI edge cases ──
 
@@ -705,7 +683,7 @@ Deno.test("createClientFromUrl - creates memory client from URL", async () => {
 
   // Write and read back
   await client.receive([["mutable://open/test", { val: 1 }]]);
-  const reads = await client.read("mutable://open/test");
+  const reads = await client.read(["mutable://open/test"]);
   const read = reads[0];
   assertEquals(read.success, true);
   assertEquals(read.record?.data, { val: 1 });
@@ -720,92 +698,9 @@ Deno.test("createClientFromUrl - rejects unknown protocol", async () => {
   );
 });
 
-// ── Rig.readData tests ──
-
-Deno.test("Rig.readData - returns data for existing URI", async () => {
-  const _route49 = connection(memClient(), ["*"]);
-  const rig = new Rig({
-    routes: {
-      receive: [_route49],
-      read: [_route49],
-    },
-  });
-  await rig.receive([["mutable://open/profile", {
-    name: "Alice",
-    age: 30,
-  }]]);
-
-  const data = await rig.readData<{ name: string; age: number }>(
-    "mutable://open/profile",
-  );
-  assertEquals(data, { name: "Alice", age: 30 });
-});
-
-Deno.test("Rig.readData - returns null for missing URI", async () => {
-  const _route50 = connection(memClient(), ["*"]);
-  const rig = new Rig({
-    routes: {
-      receive: [_route50],
-      read: [_route50],
-    },
-  });
-  const data = await rig.readData("mutable://open/ghost");
-  assertEquals(data, null);
-});
-
-// rig.delete() no longer exists — Rig.readData after delete test removed
-
-Deno.test("Rig.readData - handles scalar values", async () => {
-  const _route51 = connection(memClient(), ["*"]);
-  const rig = new Rig({
-    routes: {
-      receive: [_route51],
-      read: [_route51],
-    },
-  });
-
-  await rig.receive([["mutable://open/num", 42]]);
-  assertEquals(await rig.readData<number>("mutable://open/num"), 42);
-
-  await rig.receive([["mutable://open/str", "hello"]]);
-  assertEquals(await rig.readData<string>("mutable://open/str"), "hello");
-
-  await rig.receive([["mutable://open/bool", true]]);
-  assertEquals(await rig.readData<boolean>("mutable://open/bool"), true);
-});
-
-// ── Rig.readOrThrow tests ──
-
-Deno.test("Rig.readOrThrow - returns data for existing URI", async () => {
-  const _route52 = connection(memClient(), ["*"]);
-  const rig = new Rig({
-    routes: {
-      receive: [_route52],
-      read: [_route52],
-    },
-  });
-  await rig.receive([["mutable://open/config", { debug: false }]]);
-
-  const config = await rig.readOrThrow<{ debug: boolean }>(
-    "mutable://open/config",
-  );
-  assertEquals(config, { debug: false });
-});
-
-Deno.test("Rig.readOrThrow - throws for missing URI", async () => {
-  const _route53 = connection(memClient(), ["*"]);
-  const rig = new Rig({
-    routes: {
-      receive: [_route53],
-      read: [_route53],
-    },
-  });
-  await assertRejects(
-    () => rig.readOrThrow("mutable://open/missing"),
-    Error,
-    "no data at mutable://open/missing",
-  );
-});
+// readData / readOrThrow / exists / count / watch / watchAll were
+// removed from Rig — compose them on top of `rig.read([...])` and
+// `rig.observe([...])` at call sites instead.
 
 // rig.delete() no longer exists — Rig.readOrThrow after delete test removed
 
@@ -898,7 +793,7 @@ Deno.test("Rig.read - trailing-slash returns URI strings", async () => {
   await rig.receive([["mutable://open/ld/b", 2]]);
   await rig.receive([["mutable://open/ld/c", 3]]);
 
-  const results = await rig.read("mutable://open/ld/");
+  const results = await rig.read(["mutable://open/ld/"]);
   const uris = results.filter((r) => r.success).map((r) => r.uri).filter(
     Boolean,
   );
@@ -916,7 +811,7 @@ Deno.test("Rig.read - trailing-slash returns empty for empty prefix", async () =
       read: [_route62],
     },
   });
-  const results = await rig.read("mutable://open/nothing-here/");
+  const results = await rig.read(["mutable://open/nothing-here/"]);
   assertEquals(results.length, 0);
 });
 
@@ -933,7 +828,7 @@ Deno.test("Rig.read - trailing-slash reads all data under a prefix", async () =>
   await rig.receive([["mutable://open/ra/alice", { name: "Alice" }]]);
   await rig.receive([["mutable://open/ra/bob", { name: "Bob" }]]);
 
-  const results = await rig.read<{ name: string }>("mutable://open/ra/");
+  const results = await rig.read<{ name: string }>(["mutable://open/ra/"]);
   const data = new Map(
     results.filter((r) => r.success && r.record && r.uri).map((
       r,
@@ -952,7 +847,7 @@ Deno.test("Rig.read - trailing-slash returns empty for empty prefix", async () =
       read: [_route64],
     },
   });
-  const results = await rig.read("mutable://open/empty-prefix/");
+  const results = await rig.read(["mutable://open/empty-prefix/"]);
   assertEquals(results.length, 0);
 });
 
@@ -1070,7 +965,7 @@ Deno.test("Rig.read - trailing-slash empty prefix returns empty", async () => {
       read: [_route70],
     },
   });
-  const results = await rig.read("mutable://open/empty-prefix/");
+  const results = await rig.read(["mutable://open/empty-prefix/"]);
   assertEquals(results.length, 0);
 });
 
@@ -1086,7 +981,7 @@ Deno.test("Rig.read - trailing-slash returns all items under prefix", async () =
   await rig.receive([["mutable://open/coll/b", { v: 2 }]]);
   await rig.receive([["mutable://open/coll/c", { v: 3 }]]);
 
-  const results = await rig.read<{ v: number }>("mutable://open/coll/");
+  const results = await rig.read<{ v: number }>(["mutable://open/coll/"]);
   assertEquals(results.length, 3);
   const data = new Map(
     results.filter((r) => r.success && r.record && r.uri).map((
@@ -1122,134 +1017,6 @@ Deno.test("Rig.status - returns schema keys for memory backend", async () => {
   assertEquals(status.status, "healthy");
 });
 
-// ── Rig.watch() tests ──
-
-Deno.test({
-  name: "Rig.watch - detects data changes",
-  sanitizeOps: false,
-  sanitizeResources: false,
-  async fn() {
-    const _route74 = connection(memClient(), ["*"]);
-    const rig = new Rig({
-      routes: {
-        receive: [_route74],
-        read: [_route74],
-      },
-    });
-    const uri = "mutable://open/watch-test";
-
-    const values: (number | null)[] = [];
-    const abort = new AbortController();
-
-    const watchPromise = (async () => {
-      for await (
-        const value of rig.watch<number>(uri, {
-          intervalMs: 30,
-          signal: abort.signal,
-        })
-      ) {
-        values.push(value);
-        if (values.length >= 3) abort.abort();
-      }
-    })();
-
-    // Wait for first poll (null)
-    await new Promise((r) => setTimeout(r, 50));
-    await rig.receive([[uri, 42]]);
-    await new Promise((r) => setTimeout(r, 50));
-    await rig.receive([[uri, 99]]);
-    await new Promise((r) => setTimeout(r, 100));
-
-    abort.abort();
-    await watchPromise.catch(() => {});
-
-    assertEquals(values[0], null);
-    assertEquals(values.length >= 2, true);
-  },
-});
-
-Deno.test({
-  name: "Rig.watch - stops on abort signal",
-  sanitizeOps: false,
-  sanitizeResources: false,
-  async fn() {
-    const _route75 = connection(memClient(), ["*"]);
-    const rig = new Rig({
-      routes: {
-        receive: [_route75],
-        read: [_route75],
-      },
-    });
-    const uri = "mutable://open/watch-abort";
-    const abort = new AbortController();
-
-    let count = 0;
-    const watchPromise = (async () => {
-      for await (
-        const _ of rig.watch(uri, { intervalMs: 20, signal: abort.signal })
-      ) {
-        void _;
-        count++;
-        // Write a different value each time to trigger dedup emission
-        await rig.receive([[uri, count]]);
-        if (count >= 2) abort.abort();
-      }
-    })();
-
-    await watchPromise.catch(() => {});
-    assertEquals(count >= 1, true);
-  },
-});
-
-Deno.test({
-  name: "Rig.watch - only emits on change (deduplication)",
-  sanitizeOps: false,
-  sanitizeResources: false,
-  async fn() {
-    const _route76 = connection(memClient(), ["*"]);
-    const rig = new Rig({
-      routes: {
-        receive: [_route76],
-        read: [_route76],
-      },
-    });
-    const uri = "mutable://open/watch-dedup";
-    await rig.receive([[uri, "stable"]]);
-
-    const values: string[] = [];
-    const abort = new AbortController();
-
-    const watchPromise = (async () => {
-      for await (
-        const value of rig.watch<string>(uri, {
-          intervalMs: 20,
-          signal: abort.signal,
-        })
-      ) {
-        values.push(value!);
-        if (values.length >= 2) abort.abort();
-      }
-    })();
-
-    // Wait for initial poll
-    await new Promise((r) => setTimeout(r, 40));
-    // Write same value — should NOT emit again
-    await rig.receive([[uri, "stable"]]);
-    await new Promise((r) => setTimeout(r, 60));
-    // Write different value — SHOULD emit
-    await rig.receive([[uri, "changed"]]);
-    await new Promise((r) => setTimeout(r, 60));
-
-    abort.abort();
-    await watchPromise.catch(() => {});
-
-    assertEquals(values[0], "stable");
-    // Duplicates should not appear
-    const uniqueValues = [...new Set(values)];
-    assertEquals(uniqueValues.length, values.length);
-  },
-});
-
 // ── Program-validated Rig tests ──
 // Programs classify messages by URI prefix and can reject via `error`.
 
@@ -1281,7 +1048,7 @@ Deno.test("Rig - program accepts valid receive", async () => {
   ]);
   assertEquals(accepted.accepted, true);
 
-  const data = await rig.readData("mutable://open/valid");
+  const data = await readData(rig, "mutable://open/valid");
   assertEquals(data, { ok: true });
 });
 
@@ -1330,7 +1097,7 @@ Deno.test("Rig - multi-connection dispatch with programs accepts valid", async (
   ]);
   assertEquals(accepted.accepted, true);
 
-  const data = await rig.readData("mutable://open/multi-prog");
+  const data = await readData(rig, "mutable://open/multi-prog");
   assertEquals(data, 42);
 });
 
@@ -1361,39 +1128,6 @@ Deno.test("Rig - multi-connection dispatch with programs rejects via rejecter", 
   const [result] = await rig.receive([["mutable://unknown/x", "nope"]]);
   assertEquals(result.accepted, false);
 });
-
-// ── Rig.count() tests ──
-
-Deno.test("Rig.count - returns count of items under prefix", async () => {
-  const _route82 = connection(memClient(), ["*"]);
-  const rig = new Rig({
-    routes: {
-      receive: [_route82],
-      read: [_route82],
-    },
-  });
-  await rig.receive([["mutable://open/cnt/a", 1]]);
-  await rig.receive([["mutable://open/cnt/b", 2]]);
-  await rig.receive([["mutable://open/cnt/c", 3]]);
-
-  const count = await rig.count("mutable://open/cnt");
-  assertEquals(count, 3);
-});
-
-Deno.test("Rig.count - returns 0 for empty prefix", async () => {
-  const _route83 = connection(memClient(), ["*"]);
-  const rig = new Rig({
-    routes: {
-      receive: [_route83],
-      read: [_route83],
-    },
-  });
-  const count = await rig.count("mutable://open/empty-count");
-  assertEquals(count, 0);
-});
-
-// rig.delete() no longer exists — Rig.count after delete test removed
-// rig.count() no longer takes pagination options — test removed
 
 // ── No-backend-registered rejection tests (createClientFromUrl) ──
 
@@ -1457,7 +1191,7 @@ Deno.test("createClientFromUrl - creates console client", async () => {
   assertEquals(results[0].accepted, true);
 
   // Console client is write-only
-  const readResults = await client.read("mutable://test/key");
+  const readResults = await client.read(["mutable://test/key"]);
   assertEquals(readResults[0].success, false);
 });
 
@@ -1532,7 +1266,7 @@ Deno.test("createClientFromUrl - defaults to SimpleClient for storage", async ()
 
   // SimpleClient: receive just writes, no envelope decomposition
   await client.receive([["store://test/key", { val: 1 }]]);
-  const reads = await client.read("store://test/key");
+  const reads = await client.read(["store://test/key"]);
   assertEquals(reads[0].success, true);
   assertEquals(reads[0].record?.data, { val: 1 });
 });
@@ -1581,7 +1315,7 @@ Deno.test("createClientResolver - resolves memory URL with default SimpleClient"
 
   // SimpleClient: receive just writes, no envelope decomposition
   await client.receive([["store://test/key", { val: 1 }]]);
-  const reads = await client.read("store://test/key");
+  const reads = await client.read(["store://test/key"]);
   assertEquals(reads[0].success, true);
   assertEquals(reads[0].record?.data, { val: 1 });
 });
@@ -1677,189 +1411,6 @@ Deno.test("Identity.verify - rejects wrong pubkey signature", async () => {
   assertEquals(valid, false);
 });
 
-// ── Rig.watchAll() tests ──
-
-Deno.test({
-  name: "Rig.watchAll - yields initial snapshot with all items",
-  async fn() {
-    const _route90 = connection(memClient(), ["*"]);
-    const rig = new Rig({
-      routes: {
-        receive: [_route90],
-        read: [_route90],
-      },
-    });
-    await rig.receive([["mutable://open/wacol/a", { n: 1 }]]);
-    await rig.receive([["mutable://open/wacol/b", { n: 2 }]]);
-
-    const abort = new AbortController();
-    let snapshots = 0;
-
-    for await (
-      const snapshot of rig.watchAll<{ n: number }>("mutable://open/wacol", {
-        intervalMs: 50,
-        signal: abort.signal,
-      })
-    ) {
-      snapshots++;
-      assertEquals(snapshot.items.size, 2);
-      assertEquals(snapshot.items.get("mutable://open/wacol/a")?.n, 1);
-      assertEquals(snapshot.items.get("mutable://open/wacol/b")?.n, 2);
-      assertEquals(snapshot.added.length, 2);
-      assertEquals(snapshot.removed.length, 0);
-      assertEquals(snapshot.changed.length, 0);
-      abort.abort();
-    }
-
-    assertEquals(snapshots, 1);
-  },
-});
-
-Deno.test({
-  name: "Rig.watchAll - detects added items",
-  async fn() {
-    const _route91 = connection(memClient(), ["*"]);
-    const rig = new Rig({
-      routes: {
-        receive: [_route91],
-        read: [_route91],
-      },
-    });
-    await rig.receive([["mutable://open/wacol/a", { n: 1 }]]);
-
-    const abort = new AbortController();
-    let snapshots = 0;
-
-    for await (
-      const snapshot of rig.watchAll<{ n: number }>("mutable://open/wacol", {
-        intervalMs: 50,
-        signal: abort.signal,
-      })
-    ) {
-      snapshots++;
-      if (snapshots === 1) {
-        assertEquals(snapshot.items.size, 1);
-        // Add a new item before next poll
-        await rig.receive([["mutable://open/wacol/b", { n: 2 }]]);
-      } else {
-        assertEquals(snapshot.items.size, 2);
-        assertEquals(snapshot.added, ["mutable://open/wacol/b"]);
-        assertEquals(snapshot.removed.length, 0);
-        assertEquals(snapshot.changed.length, 0);
-        abort.abort();
-      }
-    }
-
-    assertEquals(snapshots, 2);
-  },
-});
-
-// rig.delete() no longer exists — Rig.watchAll removed items test removed
-
-Deno.test({
-  name: "Rig.watchAll - detects changed items",
-  async fn() {
-    const _route92 = connection(memClient(), ["*"]);
-    const rig = new Rig({
-      routes: {
-        receive: [_route92],
-        read: [_route92],
-      },
-    });
-    await rig.receive([["mutable://open/wacol/a", { n: 1 }]]);
-
-    const abort = new AbortController();
-    let snapshots = 0;
-
-    for await (
-      const snapshot of rig.watchAll<{ n: number }>("mutable://open/wacol", {
-        intervalMs: 50,
-        signal: abort.signal,
-      })
-    ) {
-      snapshots++;
-      if (snapshots === 1) {
-        assertEquals(snapshot.items.get("mutable://open/wacol/a")?.n, 1);
-        // Modify an item before next poll
-        await rig.receive([["mutable://open/wacol/a", { n: 99 }]]);
-      } else {
-        assertEquals(snapshot.items.get("mutable://open/wacol/a")?.n, 99);
-        assertEquals(snapshot.added.length, 0);
-        assertEquals(snapshot.removed.length, 0);
-        assertEquals(snapshot.changed, ["mutable://open/wacol/a"]);
-        abort.abort();
-      }
-    }
-
-    assertEquals(snapshots, 2);
-  },
-});
-
-Deno.test({
-  name: "Rig.watchAll - skips emit when nothing changed",
-  async fn() {
-    const _route93 = connection(memClient(), ["*"]);
-    const rig = new Rig({
-      routes: {
-        receive: [_route93],
-        read: [_route93],
-      },
-    });
-    await rig.receive([["mutable://open/wacol/a", { n: 1 }]]);
-
-    const abort = new AbortController();
-    let snapshots = 0;
-
-    // After the first snapshot, wait 3 intervals — no changes, so no new emit
-    for await (
-      const _snapshot of rig.watchAll<{ n: number }>("mutable://open/wacol", {
-        intervalMs: 30,
-        signal: abort.signal,
-      })
-    ) {
-      snapshots++;
-      if (snapshots === 1) {
-        // Wait long enough for 3 poll intervals with no changes
-        await new Promise((r) => setTimeout(r, 120));
-        abort.abort();
-      }
-    }
-
-    // Should only have gotten 1 snapshot (the initial one)
-    assertEquals(snapshots, 1);
-  },
-});
-
-Deno.test({
-  name: "Rig.watchAll - empty collection yields initial empty snapshot",
-  async fn() {
-    const _route94 = connection(memClient(), ["*"]);
-    const rig = new Rig({
-      routes: {
-        receive: [_route94],
-        read: [_route94],
-      },
-    });
-
-    const abort = new AbortController();
-    let snapshots = 0;
-
-    for await (
-      const snapshot of rig.watchAll("mutable://open/waempty", {
-        intervalMs: 50,
-        signal: abort.signal,
-      })
-    ) {
-      snapshots++;
-      assertEquals(snapshot.items.size, 0);
-      assertEquals(snapshot.added.length, 0);
-      abort.abort();
-    }
-
-    assertEquals(snapshots, 1);
-  },
-});
-
 // ── Rig.observe() tests (client-backed streaming) ──
 
 Deno.test({
@@ -1876,17 +1427,15 @@ Deno.test({
     });
 
     const abort = new AbortController();
-    const results: { uri: string; data: unknown }[] = [];
+    const seen: string[] = [];
 
     // Start observing in background
     const done = (async () => {
       for await (
-        const result of rig.observe("mutable://open/wasub/:key", abort.signal)
+        const ev of rig.observe(["mutable://open/wasub/:key"], abort.signal)
       ) {
-        if (result.success && result.record) {
-          results.push({ uri: result.uri!, data: result.record.data });
-        }
-        if (results.length >= 2) abort.abort();
+        seen.push(ev.uri);
+        if (seen.length >= 2) abort.abort();
       }
     })();
 
@@ -1896,9 +1445,7 @@ Deno.test({
 
     await done;
 
-    assertEquals(results.length, 2);
-    assertEquals(results[0].uri, "mutable://open/wasub/a");
-    assertEquals(results[1].uri, "mutable://open/wasub/b");
+    assertEquals(seen, ["mutable://open/wasub/a", "mutable://open/wasub/b"]);
   },
 });
 
@@ -1918,11 +1465,54 @@ Deno.test({
 
     // Should immediately complete (no connection accepts observe)
     abort.abort();
-    for await (const result of rig.observe("mutable://open/*", abort.signal)) {
+    for await (
+      const result of rig.observe(["mutable://open/*"], abort.signal)
+    ) {
       results.push(result);
     }
 
     assertEquals(results.length, 0);
+  },
+});
+
+Deno.test({
+  name: "Rig.observe - merges streams across multiple urls",
+  async fn() {
+    const mem = memClient();
+    const _route97 = connection(mem, ["*"]);
+    const rig = new Rig({
+      routes: {
+        receive: [_route97],
+        read: [_route97],
+        observe: [_route97],
+      },
+    });
+
+    const abort = new AbortController();
+    const seen: string[] = [];
+
+    const done = (async () => {
+      for await (
+        const r of rig.observe(
+          ["mutable://app/users/:id", "mutable://app/posts/:id"],
+          abort.signal,
+        )
+      ) {
+        seen.push(r.uri);
+        if (seen.length >= 2) abort.abort();
+      }
+    })();
+
+    await rig.receive([
+      ["mutable://app/users/alice", {}],
+      ["mutable://app/posts/p1", {}],
+    ]);
+    await done;
+
+    assertEquals(seen.sort(), [
+      "mutable://app/posts/p1",
+      "mutable://app/users/alice",
+    ]);
   },
 });
 
@@ -1970,7 +1560,7 @@ Deno.test("Rig hooks - beforeReceive mutates context", async () => {
   });
 
   await rig.receive([["mutable://open/test", { x: 1 }]]);
-  const data = await rig.readData("mutable://open/test");
+  const data = await readData(rig, "mutable://open/test");
   assertEquals((data as Record<string, unknown>).injected, true);
 });
 
@@ -1990,7 +1580,7 @@ Deno.test("Rig hooks - afterRead observes result without modifying", async () =>
   });
 
   await rig.receive([["mutable://open/test", { x: 1 }]]);
-  const results = await rig.read("mutable://open/test");
+  const results = await rig.read(["mutable://open/test"]);
   const result = results[0];
   assertEquals(result.success, true);
   assertEquals((result.record?.data as Record<string, unknown>).x, 1);
@@ -2013,7 +1603,7 @@ Deno.test("Rig hooks - afterRead throw propagates to caller", async () => {
 
   await rig.receive([["mutable://open/test", { x: 1 }]]);
   await assertRejects(
-    () => rig.read("mutable://open/test"),
+    () => rig.read(["mutable://open/test"]),
     Error,
     "post-condition failed",
   );
@@ -2106,7 +1696,7 @@ Deno.test("Rig events - wildcard fires for all ops", async () => {
   });
 
   await rig.receive([["mutable://open/a", { v: 1 }]]);
-  await rig.read("mutable://open/a");
+  await rig.read(["mutable://open/a"]);
   await new Promise((r) => setTimeout(r, 20));
 
   assertEquals(events.length, 2);
@@ -2192,7 +1782,7 @@ Deno.test("Rig reaction - does not fire on read", async () => {
   await new Promise((r) => setTimeout(r, 20));
   called = false; // reset from the receive
 
-  await rig.read("mutable://open/test");
+  await rig.read(["mutable://open/test"]);
   await new Promise((r) => setTimeout(r, 20));
 
   assertEquals(called, false);
@@ -2320,16 +1910,16 @@ Deno.test("Rig connections - per-op routing uses separate backends", async () =>
   });
 
   // Read should come from readClient
-  const data = await rig.readData("mutable://open/cached");
+  const data = await readData(rig, "mutable://open/cached");
   assertEquals((data as Record<string, unknown>).from, "cache");
 
   // Receive should go to writeClient
   await rig.receive([["mutable://open/new", { from: "write" }]]);
-  const fromWrite = (await writeClient.read("mutable://open/new"))[0];
+  const fromWrite = (await writeClient.read(["mutable://open/new"]))[0];
   assertEquals(fromWrite.success, true);
 
   // readClient should NOT have the write
-  const fromRead = (await readClient.read("mutable://open/new"))[0];
+  const fromRead = (await readClient.read(["mutable://open/new"]))[0];
   assertEquals(fromRead.success, false);
 });
 
@@ -2423,18 +2013,20 @@ Deno.test({
         },
       });
 
-      // 3. Observe a pattern via the rig (routes to HttpClient SSE)
+      // 3. Observe a pattern via the rig (routes to HttpClient SSE).
+      // INV-style: get the uri, then read it for the payload.
       const received: { uri: string; data: unknown }[] = [];
 
       const done = (async () => {
         for await (
-          const result of subscriberRig.observe(
-            "mutable://open/market/:msgId",
+          const ev of subscriberRig.observe(
+            ["mutable://open/market/:msgId"],
             subscriberAbort.signal,
           )
         ) {
-          if (result.success && result.record) {
-            received.push({ uri: result.uri!, data: result.record.data });
+          const [r] = await subscriberRig.read([ev.uri]);
+          if (r?.success && r.record) {
+            received.push({ uri: ev.uri, data: r.record.data });
           }
           if (received.length >= 2) subscriberAbort.abort();
         }

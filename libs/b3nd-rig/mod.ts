@@ -23,7 +23,7 @@
  * await rig.send([envelope]);
  *
  * // Read (no identity needed)
- * const results = await rig.read("mutable://app/key");
+ * const results = await rig.read(["mutable://app/key"]);
  * ```
  */
 

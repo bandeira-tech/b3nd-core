@@ -25,11 +25,11 @@
  * ]);
  *
  * // Reads it back
- * const results = await client.read("mutable://app/config");
+ * const results = await client.read(["mutable://app/config"]);
  *
- * // Observe writes matching a pattern
+ * // Observe writes for a pattern url
  * const ac = new AbortController();
- * for await (const change of client.observe("mutable://app/*", ac.signal)) {
+ * for await (const change of client.observe(["mutable://app/*"], ac.signal)) {
  *   console.log(change.uri, change.record?.data);
  * }
  * ```
@@ -74,9 +74,8 @@ export class SimpleClient extends ObserveEmitter
     }));
   }
 
-  read<T = unknown>(uris: string | string[]): Promise<ReadResult<T>[]> {
-    const uriList = Array.isArray(uris) ? uris : [uris];
-    return this.store.read<T>(uriList);
+  read<T = unknown>(urls: string[]): Promise<ReadResult<T>[]> {
+    return this.store.read<T>(urls);
   }
 
   status(): Promise<StatusResult> {

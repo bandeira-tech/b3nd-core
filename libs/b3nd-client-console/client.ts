@@ -20,6 +20,7 @@
 
 import type {
   Message,
+  ObserveEvent,
   ProtocolInterfaceNode,
   ReadResult,
   ReceiveResult,
@@ -61,26 +62,25 @@ export class ConsoleClient implements ProtocolInterfaceNode {
     return Promise.resolve(results);
   }
 
-  read<T = unknown>(uris: string | string[]): Promise<ReadResult<T>[]> {
-    const uriList = Array.isArray(uris) ? uris : [uris];
+  read<T = unknown>(urls: string[]): Promise<ReadResult<T>[]> {
     return Promise.resolve(
-      uriList.map(() => ({
+      urls.map(() => ({
         success: false as const,
         error: "ConsoleClient is write-only",
       })),
     );
   }
 
-  observe<T = unknown>(
-    _pattern: string,
+  observe(
+    _urls: string[],
     _signal?: AbortSignal,
-  ): AsyncIterable<ReadResult<T>> {
+  ): AsyncIterable<ObserveEvent> {
     return {
       [Symbol.asyncIterator]() {
         return {
           next: () =>
             Promise.resolve({
-              value: undefined as unknown as ReadResult<T>,
+              value: undefined as unknown as ObserveEvent,
               done: true,
             }),
         };

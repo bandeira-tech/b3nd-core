@@ -34,9 +34,21 @@ export interface ReceiveCtx {
   data: unknown;
 }
 
-/** Context for a read hook. */
+/**
+ * Context for a read hook.
+ *
+ * Carries only the `url` — the full url string, including any
+ * `?fn=…&…` query. `parseUrl` is a cheap pure function; call it from
+ * the hook if you need the parsed view. Before-hooks may rewrite the
+ * url by returning `{ ctx: { url: newUrl } }`; the rig dispatches the
+ * returned url unchanged.
+ *
+ * If you need to manipulate downstream behavior more invasively, wrap
+ * the executing client itself rather than threading transformations
+ * through the rig.
+ */
 export interface ReadCtx {
-  uri: string;
+  url: string;
 }
 
 // ── Hook function types ──

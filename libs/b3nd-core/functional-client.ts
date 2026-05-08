@@ -8,6 +8,7 @@
 
 import type {
   Message,
+  ObserveEvent,
   ProtocolInterfaceNode,
   ReadResult,
   ReceiveResult,
@@ -20,11 +21,11 @@ import type {
  */
 export interface FunctionalClientConfig {
   receive?: (msgs: Message[]) => Promise<ReceiveResult[]>;
-  read?: <T = unknown>(uris: string | string[]) => Promise<ReadResult<T>[]>;
-  observe?: <T = unknown>(
-    pattern: string,
+  read?: <T = unknown>(urls: string[]) => Promise<ReadResult<T>[]>;
+  observe?: (
+    urls: string[],
     signal: AbortSignal,
-  ) => AsyncIterable<ReadResult<T>>;
+  ) => AsyncIterable<ObserveEvent>;
   status?: () => Promise<StatusResult>;
 }
 
@@ -40,7 +41,7 @@ export interface FunctionalClientConfig {
  * ```typescript
  * const client = new FunctionalClient({
  *   receive: async (msg) => backend.receive(msg),
- *   read: async (uris) => backend.read(uris),
+ *   read: async (urls) => backend.read(urls),
  * });
  * ```
  */
@@ -60,24 +61,23 @@ export class FunctionalClient implements ProtocolInterfaceNode {
     );
   }
 
-  read<T = unknown>(uris: string | string[]): Promise<ReadResult<T>[]> {
+  read<T = unknown>(urls: string[]): Promise<ReadResult<T>[]> {
     if (this.config.read) {
-      return this.config.read<T>(uris);
+      return this.config.read<T>(urls);
     }
-    const uriList = Array.isArray(uris) ? uris : [uris];
     return Promise.resolve(
-      uriList.map(() =>
+      urls.map(() =>
         ({ success: false, error: "not implemented" }) as ReadResult<T>
       ),
     );
   }
 
-  async *observe<T = unknown>(
-    pattern: string,
+  async *observe(
+    urls: string[],
     signal: AbortSignal,
-  ): AsyncIterable<ReadResult<T>> {
+  ): AsyncIterable<ObserveEvent> {
     if (this.config.observe) {
-      yield* this.config.observe<T>(pattern, signal);
+      yield* this.config.observe(urls, signal);
     }
     // No observe config → empty stream (never yields)
   }

@@ -22,7 +22,7 @@ Deno.test("FunctionalClient - receive defaults to not-implemented", async () => 
 
 Deno.test("FunctionalClient - read defaults to not-implemented", async () => {
   const client = new FunctionalClient({});
-  const results = await client.read("mutable://test");
+  const results = await client.read(["mutable://test"]);
   assertEquals(results.length, 1);
   assertEquals(results[0].success, false);
   assertEquals(results[0].error, "not implemented");
@@ -57,17 +57,16 @@ Deno.test("FunctionalClient - custom receive is called", async () => {
 Deno.test("FunctionalClient - custom read is called", async () => {
   const client = new FunctionalClient({
     read: <T = unknown>(
-      uris: string | string[],
+      urls: string[],
     ): Promise<ReadResult<T>[]> => {
-      const uriList = Array.isArray(uris) ? uris : [uris];
-      return Promise.resolve(uriList.map(() => ({
+      return Promise.resolve(urls.map(() => ({
         success: true as const,
         record: { data: { name: "Alice" } as T },
       })));
     },
   });
 
-  const results = await client.read("mutable://users/alice");
+  const results = await client.read(["mutable://users/alice"]);
   assertEquals(results.length, 1);
   assertEquals(results[0].success, true);
   assertEquals(results[0].record?.data, { name: "Alice" });
@@ -99,10 +98,9 @@ Deno.test("FunctionalClient - read with multiple URIs", async () => {
 
   const client = new FunctionalClient({
     read: <T = unknown>(
-      uris: string | string[],
+      urls: string[],
     ): Promise<ReadResult<T>[]> => {
-      const uriList = Array.isArray(uris) ? uris : [uris];
-      return Promise.resolve(uriList.map((uri) => {
+      return Promise.resolve(urls.map((uri) => {
         if (uri in store) {
           return { success: true as const, record: { data: store[uri] as T } };
         }
@@ -144,10 +142,9 @@ Deno.test("FunctionalClient - works as in-memory store", async () => {
       return Promise.resolve(msgs.map(() => ({ accepted: true })));
     },
     read: <T = unknown>(
-      uris: string | string[],
+      urls: string[],
     ): Promise<ReadResult<T>[]> => {
-      const uriList = Array.isArray(uris) ? uris : [uris];
-      return Promise.resolve(uriList.map((uri): ReadResult<T> => {
+      return Promise.resolve(urls.map((uri): ReadResult<T> => {
         if (uri.endsWith("/")) {
           // List mode: return items matching prefix
           const items = [...store.entries()]
@@ -175,12 +172,12 @@ Deno.test("FunctionalClient - works as in-memory store", async () => {
   assertEquals(writeResult[0].accepted, true);
 
   // Read
-  const readResults = await client.read("mutable://users/alice");
+  const readResults = await client.read(["mutable://users/alice"]);
   assertEquals(readResults[0].success, true);
   assertEquals(readResults[0].record?.data, { name: "Alice" });
 
   // List via trailing slash
-  const listResults = await client.read("mutable://users/");
+  const listResults = await client.read(["mutable://users/"]);
   assertEquals(listResults[0].success, true);
   assertEquals(listResults[0].uri, "mutable://users/alice");
 });

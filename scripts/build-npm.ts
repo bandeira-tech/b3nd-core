@@ -22,6 +22,7 @@ await build({
   entryPoints: [
     { name: ".", path: "./mod.ts" },
     { name: "./types", path: "./libs/b3nd-core/types.ts" },
+    { name: "./url", path: "./libs/b3nd-core/url.ts" },
     { name: "./encoding", path: "./libs/b3nd-core/encoding.ts" },
     { name: "./binary", path: "./libs/b3nd-core/binary.ts" },
     { name: "./hash", path: "./hash.ts" },

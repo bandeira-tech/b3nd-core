@@ -7,6 +7,7 @@
 
 import type {
   Message,
+  ObserveEvent,
   ProtocolInterfaceNode,
   ReadResult,
   ReceiveResult,
@@ -31,6 +32,13 @@ export class WebSocketClient implements ProtocolInterfaceNode {
     reject: (error: Error) => void;
     timeout: ReturnType<typeof setTimeout>;
   }>();
+  // Active observe subscriptions. The server pushes `{ id, success: true,
+  // data: { uri } }` per change and `{ id, success: true, data: null }` to
+  // signal end-of-stream. Cancel: client sends `{ type: "observe-cancel" }`.
+  private subscriptions = new Map<
+    string,
+    (frame: ObserveEvent | null) => void
+  >();
   private messageHandler = this.handleMessage.bind(this);
   private closeHandler = this.handleClose.bind(this);
   private errorHandler = this.handleError.bind(this);
@@ -138,8 +146,27 @@ export class WebSocketClient implements ProtocolInterfaceNode {
   private handleMessage(event: MessageEvent) {
     try {
       const response: WebSocketResponse = JSON.parse(event.data);
-      const pending = this.pendingRequests.get(response.id);
 
+      // Observe subscription: keep routing frames with the same id to
+      // its callback until the server signals end-of-stream with
+      // `data: null`.
+      const sub = this.subscriptions.get(response.id);
+      if (sub) {
+        if (!response.success) {
+          this.subscriptions.delete(response.id);
+          sub(null);
+          return;
+        }
+        if (response.data === null) {
+          this.subscriptions.delete(response.id);
+          sub(null);
+        } else {
+          sub(response.data as ObserveEvent);
+        }
+        return;
+      }
+
+      const pending = this.pendingRequests.get(response.id);
       if (pending) {
         clearTimeout(pending.timeout);
         this.pendingRequests.delete(response.id);
@@ -195,7 +222,7 @@ export class WebSocketClient implements ProtocolInterfaceNode {
   }
 
   /**
-   * Cleanup pending requests with error
+   * Cleanup pending requests and subscriptions with error.
    */
   private cleanupPendingRequests(error: Error) {
     for (const pending of this.pendingRequests.values()) {
@@ -203,6 +230,11 @@ export class WebSocketClient implements ProtocolInterfaceNode {
       pending.reject(error);
     }
     this.pendingRequests.clear();
+    // Tear down active observe subscriptions.
+    for (const sub of this.subscriptions.values()) {
+      sub(null);
+    }
+    this.subscriptions.clear();
   }
 
   /**
@@ -271,65 +303,90 @@ export class WebSocketClient implements ProtocolInterfaceNode {
     }
   }
 
-  async read<T = unknown>(uris: string | string[]): Promise<ReadResult<T>[]> {
-    const uriList = Array.isArray(uris) ? uris : [uris];
-    const results: ReadResult<T>[] = [];
-
-    for (const uri of uriList) {
-      if (uri.endsWith("/")) {
-        results.push(...await this._list<T>(uri));
-      } else {
-        results.push(await this._readOne<T>(uri));
-      }
-    }
-
-    return results;
-  }
-
-  private async _readOne<T>(uri: string): Promise<ReadResult<T>> {
-    try {
-      const result = await this.sendRequest<ReadResult<T>>("read", {
-        uris: [uri],
-      });
-      // Server returns array for read — take the first item
-      const items = Array.isArray(result) ? result : [result];
-      const item = items[0];
-      if (item && item.success && item.record) {
-        // Server returns { data } — decode binary from data
-        item.record.data = decodeBinaryFromJson(item.record.data) as T;
-      }
-      return item || { success: false, error: "No result returned" };
-    } catch (error) {
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : String(error),
-      };
-    }
-  }
-
-  private async _list<T>(uri: string): Promise<ReadResult<T>[]> {
+  async read<T = unknown>(urls: string[]): Promise<ReadResult<T>[]> {
+    if (urls.length === 0) return [];
     try {
       const results = await this.sendRequest<ReadResult<T>[]>("read", {
-        uris: [uri],
+        urls,
       });
       const items = Array.isArray(results) ? results : [results];
       for (const item of items) {
         if (item.success && item.record) {
-          // Server returns { data } — decode binary from data
           item.record.data = decodeBinaryFromJson(item.record.data) as T;
         }
       }
       return items;
-    } catch {
-      return [];
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      return urls.map(() => ({ success: false, error: msg }));
     }
   }
 
-  async *observe<T = unknown>(
-    _pattern: string,
-    _signal: AbortSignal,
-  ): AsyncIterable<ReadResult<T>> {
-    // Not implemented — observe requires transport-specific support.
+  async *observe(
+    urls: string[],
+    signal: AbortSignal,
+  ): AsyncIterable<ObserveEvent> {
+    if (urls.length === 0) return;
+    await this.ensureConnected();
+
+    const id = crypto.randomUUID();
+    const queue: ObserveEvent[] = [];
+    let wake: (() => void) | null = null;
+    let ended = false;
+
+    this.subscriptions.set(id, (frame) => {
+      if (frame === null) {
+        ended = true;
+      } else {
+        queue.push(frame);
+      }
+      const w = wake;
+      if (w) {
+        wake = null;
+        w();
+      }
+    });
+
+    const onAbort = () => {
+      try {
+        this.ws?.send(
+          JSON.stringify({
+            id,
+            type: "observe-cancel",
+            payload: {},
+          } as WebSocketRequest),
+        );
+      } catch {
+        // Ignore — connection may already be closed.
+      }
+      this.subscriptions.delete(id);
+      const w = wake;
+      if (w) {
+        wake = null;
+        w();
+      }
+    };
+    signal.addEventListener("abort", onAbort, { once: true });
+
+    try {
+      this.ws!.send(
+        JSON.stringify({
+          id,
+          type: "observe",
+          payload: { urls },
+        } as WebSocketRequest),
+      );
+      while (true) {
+        while (queue.length > 0) yield queue.shift()!;
+        if (signal.aborted || ended) return;
+        await new Promise<void>((resolve) => {
+          wake = resolve;
+        });
+      }
+    } finally {
+      signal.removeEventListener("abort", onAbort);
+      this.subscriptions.delete(id);
+    }
   }
 
   async status(): Promise<StatusResult> {
