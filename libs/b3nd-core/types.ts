@@ -13,35 +13,6 @@ export interface WriteResult<T = unknown> {
 }
 
 /**
- * Observation event — emitted by `observe(urls)` when an entry under
- * a watched routing key changes.
- *
- * Carries the uri only, INV-style. The observer reads the entity at
- * that uri to learn its current state (or `success:false` if it was
- * deleted). No payload is included on the wire — this keeps the
- * notification cheap and the read path the single source of truth.
- */
-export interface ObserveEvent {
-  uri: string;
-}
-
-/**
- * Result of a read operation.
- *
- * `uri` is present when the result describes a specific entry within a
- * larger response (e.g. items returned from `fn=ls`). `record` is
- * omitted when the executing client is asked for a uri-only listing
- * (`fn=ls&format=uris`). For `fn=count`, `record.data` is a number.
- */
-export interface ReadResult<T> {
-  success: boolean;
-  uri?: string;
-  record?: { data: T };
-  error?: string;
-  errorDetail?: B3ndError;
-}
-
-/**
  * Result of a delete operation
  */
 export interface DeleteResult {
@@ -99,9 +70,15 @@ export type Message<D = unknown> = Output<D>;
 
 /**
  * Read function for storage lookups.
- * Single-url convenience used by program authors — wraps `read([url])[0]`.
+ *
+ * Single-url convenience used by program authors — wraps
+ * `read([url])[0]`. Returns `undefined` when the read produced no
+ * Output for that url (i.e. "not found" under option-A absence
+ * semantics).
  */
-export type ReadFn = <T = unknown>(url: string) => Promise<ReadResult<T>>;
+export type ReadFn = <T = unknown>(
+  url: string,
+) => Promise<Output<T> | undefined>;
 
 /**
  * Receive function — batch of messages through the rig pipeline.
@@ -202,54 +179,68 @@ export interface ProtocolInterfaceNode {
    * parameters (`fn`, `limit`, `page`, `format`, `x-*` extensions, ...).
    * See `./url.ts` for the grammar and helpers.
    *
-   * The `fn` directs the executing client:
-   * - `read`  — point read; `record.data` is the value.
-   * - `ls`    — list under a prefix; one result per match. `format=full`
-   *             includes records, `format=uris` omits them.
-   * - `count` — single result with `record.data: number`.
-   * - `x-*`   — provider-defined; client throws if unsupported.
+   * Returns a flat array of `Output` tuples — `[uri, payload]` — in
+   * input order. `fn=ls` expands one input into many `Output`s; `fn=read`
+   * produces zero or one (zero = "not found"); `fn=count` produces
+   * exactly one with a synthetic `b3nd://count/<uri>` address and a
+   * `number` payload. `x-*` is provider-defined; portable consumers
+   * filter results by uri.
    *
-   * Returns one or more `ReadResult`s per url, in input order. `ls`
-   * expands to multiple results; `read` and `count` produce exactly one.
+   * **Errors** (option A):
+   *  - Transport / programmer errors throw (network down, malformed
+   *    url, unknown `fn`, no route accepts).
+   *  - "Not found" surfaces as absence — the requested uri simply
+   *    does not appear in the result.
+   *  - Domain-level errors (auth, etc.) are protocol-encoded in the
+   *    payload — the framework does not interpret them.
+   *
+   * Synthetic results live under `b3nd://`. The framework reserves
+   * the namespace; protocols can add sub-paths freely.
    *
    * @example
    * ```ts
    * import { count, listUris } from "@bandeira-tech/b3nd-core/url";
-   * const results = await pin.read([
+   * const outputs = await pin.read([
    *   "mutable://users/alice",
    *   count("mutable://users/alice/posts/"),
    *   listUris("mutable://users/alice/posts/", { limit: 12 }),
    * ]);
+   * // outputs = [
+   * //   ["mutable://users/alice", { name: "Alice" }],
+   * //   ["b3nd://count/mutable://users/alice/posts/", 42],
+   * //   ["mutable://users/alice/posts/p1", undefined],
+   * //   ...
+   * // ]
    * ```
    */
-  read<T = unknown>(urls: string[]): Promise<ReadResult<T>[]>;
+  read<T = unknown>(urls: string[]): Promise<Output<T>[]>;
 
   /**
-   * Observe a batch of urls — INV-style notification. Yields the uri
-   * of any entry under a watched routing key whose state changed
-   * (write, delete, or update). The observer reads that uri to learn
-   * the new state.
+   * Observe a batch of urls. Yields `Output<string[]>` packages —
+   * INV-style bundles of uris that changed under a watched routing
+   * key. The observer reads each uri to learn its current state.
    *
-   * No payload, no fn-aware shaping: the `fn`/params on each url are
-   * not interpreted by the framework — only the routing key is used
-   * for matching. Backends are free to inspect them, but portable
-   * code should treat observe as "tell me which uris changed".
+   * Each yielded `Output` is `[meta, uris]` where `meta` is a
+   * synthetic `b3nd://observe` (or `b3nd://observe/<id>`) address and
+   * `uris` is the list of uris that fired in this batch. Backends
+   * may emit one uri per package or batch many — the consumer
+   * iterates either way.
    *
    * The `signal` controls lifecycle — abort to stop observing.
    *
    * @example
    * ```ts
    * const abort = new AbortController();
-   * for await (const ev of client.observe(["mutable://market/*"], abort.signal)) {
-   *   const [{ record }] = await client.read([ev.uri]);
-   *   console.log(ev.uri, record?.data);
+   * for await (const [, uris] of client.observe(["mutable://market/*"], abort.signal)) {
+   *   const outputs = await client.read(uris);
+   *   for (const [uri, payload] of outputs) console.log(uri, payload);
    * }
    * ```
    */
   observe(
     urls: string[],
     signal: AbortSignal,
-  ): AsyncIterable<ObserveEvent>;
+  ): AsyncIterable<Output<string[]>>;
 
   /**
    * Status — health + capabilities.
@@ -337,12 +328,11 @@ export interface Store {
   write(entries: StoreEntry[]): Promise<StoreWriteResult[]>;
 
   /**
-   * Read a batch of urls. See `./url.ts` for the grammar.
-   *
-   * The result array may contain more entries than the input when
-   * `fn=ls` expands a prefix to its members.
+   * Read a batch of urls. Returns flat `Output[]`. See
+   * `ProtocolInterfaceNode.read` for the full contract — `Store.read`
+   * follows the same semantics.
    */
-  read<T = unknown>(urls: string[]): Promise<ReadResult<T>[]>;
+  read<T = unknown>(urls: string[]): Promise<Output<T>[]>;
 
   /**
    * Delete URIs in batch. Returns one result per URI.

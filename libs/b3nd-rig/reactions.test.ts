@@ -2,8 +2,7 @@ import { assertEquals } from "@std/assert";
 import { matchPattern, ReactionRegistry } from "./reactions.ts";
 import type { Output, ReadFn } from "../b3nd-core/types.ts";
 
-const stubRead: ReadFn = () =>
-  Promise.resolve({ success: false, error: "stub" });
+const stubRead: ReadFn = () => Promise.resolve(undefined);
 
 // ── matchPattern ──
 

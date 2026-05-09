@@ -7,9 +7,8 @@
 
 import type {
   Message,
-  ObserveEvent,
+  Output,
   ProtocolInterfaceNode,
-  ReadResult,
   ReceiveResult,
   StatusResult,
   WebSocketClientConfig,
@@ -32,12 +31,13 @@ export class WebSocketClient implements ProtocolInterfaceNode {
     reject: (error: Error) => void;
     timeout: ReturnType<typeof setTimeout>;
   }>();
-  // Active observe subscriptions. The server pushes `{ id, success: true,
-  // data: { uri } }` per change and `{ id, success: true, data: null }` to
-  // signal end-of-stream. Cancel: client sends `{ type: "observe-cancel" }`.
+  // Active observe subscriptions. The server pushes
+  // `{ id, success: true, data: [meta, uris] }` per package and
+  // `{ id, success: true, data: null }` to signal end-of-stream.
+  // Cancel: client sends `{ type: "observe-cancel" }`.
   private subscriptions = new Map<
     string,
-    (frame: ObserveEvent | null) => void
+    (frame: Output<string[]> | null) => void
   >();
   private messageHandler = this.handleMessage.bind(this);
   private closeHandler = this.handleClose.bind(this);
@@ -161,7 +161,7 @@ export class WebSocketClient implements ProtocolInterfaceNode {
           this.subscriptions.delete(response.id);
           sub(null);
         } else {
-          sub(response.data as ObserveEvent);
+          sub(response.data as Output<string[]>);
         }
         return;
       }
@@ -303,34 +303,24 @@ export class WebSocketClient implements ProtocolInterfaceNode {
     }
   }
 
-  async read<T = unknown>(urls: string[]): Promise<ReadResult<T>[]> {
+  async read<T = unknown>(urls: string[]): Promise<Output<T>[]> {
     if (urls.length === 0) return [];
-    try {
-      const results = await this.sendRequest<ReadResult<T>[]>("read", {
-        urls,
-      });
-      const items = Array.isArray(results) ? results : [results];
-      for (const item of items) {
-        if (item.success && item.record) {
-          item.record.data = decodeBinaryFromJson(item.record.data) as T;
-        }
-      }
-      return items;
-    } catch (error) {
-      const msg = error instanceof Error ? error.message : String(error);
-      return urls.map(() => ({ success: false, error: msg }));
-    }
+    const outputs = await this.sendRequest<Output<T>[]>("read", { urls });
+    const items = Array.isArray(outputs) ? outputs : [outputs];
+    return items.map(([uri, payload]) =>
+      [uri, decodeBinaryFromJson(payload) as T] as Output<T>
+    );
   }
 
   async *observe(
     urls: string[],
     signal: AbortSignal,
-  ): AsyncIterable<ObserveEvent> {
+  ): AsyncIterable<Output<string[]>> {
     if (urls.length === 0) return;
     await this.ensureConnected();
 
     const id = crypto.randomUUID();
-    const queue: ObserveEvent[] = [];
+    const queue: Output<string[]>[] = [];
     let wake: (() => void) | null = null;
     let ended = false;
 

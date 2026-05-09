@@ -32,6 +32,28 @@ export const RESERVED_FNS = ["read", "ls", "count"] as const;
 export type ReservedFn = typeof RESERVED_FNS[number];
 
 /**
+ * Synthetic-content namespace. The framework reserves `b3nd://` for
+ * any uri it has to invent — `fn=count` answers, observe-batch
+ * envelopes, cursors, errors, etc. There is no schema beyond the
+ * namespace rule; protocols are free to add sub-paths.
+ */
+export const SYNTHETIC_NS = "b3nd://";
+
+/**
+ * Build the synthetic uri the executing client uses as the address of
+ * a `fn=count` answer. The original request uri is preserved as the
+ * tail so the answer is self-describing.
+ */
+export const countUri = (uri: string): string => `${SYNTHETIC_NS}count/${uri}`;
+
+/**
+ * Default synthetic uri for `observe` notification packages. Backends
+ * may add `/<id>` or `/<pattern>` if they want to disambiguate
+ * subscriptions.
+ */
+export const OBSERVE_URI: string = `${SYNTHETIC_NS}observe`;
+
+/**
  * Standard read parameters. All are optional; clients interpret the
  * subset that makes sense for the requested fn and throw on the rest.
  */

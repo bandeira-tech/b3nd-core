@@ -21,8 +21,8 @@
 
 import type {
   Message,
+  Output,
   ProtocolInterfaceNode,
-  ReadResult,
 } from "../b3nd-core/types.ts";
 
 /**
@@ -77,8 +77,9 @@ export interface InboundCtx {
  */
 export interface Policy {
   /**
-   * Per-event transform on the inbound path. Yield zero or more events
-   * that should be delivered into the consuming target's pipeline.
+   * Per-event transform on the inbound path. Yield zero or more
+   * `Output`s that should be delivered into the consuming target's
+   * pipeline.
    *
    * The async-generator shape lets the policy:
    *  - consume a control-plane event silently (yield nothing)
@@ -87,10 +88,10 @@ export interface Policy {
    *  - pass the event through unchanged
    */
   receive?(
-    ev: ReadResult<unknown>,
+    ev: Output<unknown>,
     source: Peer,
     ctx: InboundCtx,
-  ): AsyncIterable<ReadResult<unknown>>;
+  ): AsyncIterable<Output<unknown>>;
 }
 
 /**

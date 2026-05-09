@@ -46,8 +46,7 @@ async function seedUsers(): Promise<MemoryStore> {
 Deno.test("MemoryStore.read - fn=read returns single record", async () => {
   const s = await seedUsers();
   const [r] = await s.read(["mutable://app/users/alice"]);
-  assertEquals(r.success, true);
-  assertEquals(r.record?.data, { age: 30 });
+  assertEquals(r?.[1], { age: 30 });
 });
 
 Deno.test("MemoryStore.read - fn=ls returns full records by default", async () => {
@@ -55,9 +54,8 @@ Deno.test("MemoryStore.read - fn=ls returns full records by default", async () =
   const results = await s.read([list("mutable://app/users")]);
   assertEquals(results.length, 3);
   for (const r of results) {
-    assertEquals(r.success, true);
-    assertEquals(typeof r.uri, "string");
-    assertEquals(typeof r.record?.data, "object");
+    assertEquals(typeof r[0], "string");
+    assertEquals(typeof r?.[1], "object");
   }
 });
 
@@ -66,9 +64,8 @@ Deno.test("MemoryStore.read - fn=ls format=uris omits records", async () => {
   const results = await s.read([listUris("mutable://app/users")]);
   assertEquals(results.length, 3);
   for (const r of results) {
-    assertEquals(r.success, true);
-    assertEquals(typeof r.uri, "string");
-    assertEquals(r.record, undefined);
+    assertEquals(typeof r[0], "string");
+    assertEquals(r?.[1], undefined);
   }
 });
 
@@ -82,9 +79,9 @@ Deno.test("MemoryStore.read - fn=ls limit + page slices results", async () => {
   ]);
   assertEquals(page1.length, 2);
   assertEquals(page2.length, 1);
-  assertEquals(page1[0].uri, "mutable://app/users/alice");
-  assertEquals(page1[1].uri, "mutable://app/users/bob");
-  assertEquals(page2[0].uri, "mutable://app/users/carol");
+  assertEquals(page1[0][0], "mutable://app/users/alice");
+  assertEquals(page1[1][0], "mutable://app/users/bob");
+  assertEquals(page2[0][0], "mutable://app/users/carol");
 });
 
 Deno.test("MemoryStore.read - fn=ls sortOrder=desc reverses", async () => {
@@ -92,7 +89,7 @@ Deno.test("MemoryStore.read - fn=ls sortOrder=desc reverses", async () => {
   const results = await s.read([
     list("mutable://app/users", { sortBy: "uri", sortOrder: "desc" }),
   ]);
-  assertEquals(results.map((r) => r.uri), [
+  assertEquals(results.map((r) => r[0]), [
     "mutable://app/users/carol",
     "mutable://app/users/bob",
     "mutable://app/users/alice",
@@ -102,31 +99,37 @@ Deno.test("MemoryStore.read - fn=ls sortOrder=desc reverses", async () => {
 Deno.test("MemoryStore.read - fn=count matches ls length", async () => {
   const s = await seedUsers();
   const [c] = await s.read([count("mutable://app/users")]);
-  assertEquals(c.success, true);
-  assertEquals(c.record?.data, 3);
+  assertEquals(c?.[1], 3);
 });
 
 Deno.test("MemoryStore.read - fn=count over empty prefix returns 0", async () => {
   const s = new MemoryStore();
   const [c] = await s.read([count("mutable://nothing/here")]);
-  assertEquals(c.success, true);
-  assertEquals(c.record?.data, 0);
+  assertEquals(c?.[1], 0);
 });
 
-Deno.test("MemoryStore.read - unsupported pattern fails the read", async () => {
+Deno.test("MemoryStore.read - unsupported pattern throws", async () => {
   const s = await seedUsers();
-  const [r] = await s.read([
-    list("mutable://app/users", { pattern: "a*" }),
-  ]);
-  assertEquals(r.success, false);
-  assertEquals(/pattern/.test(r.error ?? ""), true);
+  let threw = false;
+  try {
+    await s.read([list("mutable://app/users", { pattern: "a*" })]);
+  } catch (e) {
+    threw = true;
+    assertEquals(/pattern/.test(String(e)), true);
+  }
+  assertEquals(threw, true);
 });
 
-Deno.test("MemoryStore.read - x-* fn returns unsupported error", async () => {
+Deno.test("MemoryStore.read - x-* fn throws unsupported", async () => {
   const s = await seedUsers();
-  const [r] = await s.read([x("mutable://app/users/", "x-pg.scan")]);
-  assertEquals(r.success, false);
-  assertEquals(/unsupported fn/.test(r.error ?? ""), true);
+  let threw = false;
+  try {
+    await s.read([x("mutable://app/users/", "x-pg.scan")]);
+  } catch (e) {
+    threw = true;
+    assertEquals(/unsupported fn/.test(String(e)), true);
+  }
+  assertEquals(threw, true);
 });
 
 Deno.test("MemoryStore.status - advertises supported fns", async () => {
@@ -144,10 +147,10 @@ Deno.test("MemoryStore.read - heterogeneous batch (read + count + ls)", async ()
   ]);
   // 1 read + 1 count + 3 ls items = 5 results
   assertEquals(results.length, 5);
-  assertEquals(results[0].record?.data, { age: 30 });
-  assertEquals(results[1].record?.data, 3);
+  assertEquals(results[0]?.[1], { age: 30 });
+  assertEquals(results[1]?.[1], 3);
   assertEquals(
-    results.slice(2).map((r) => r.uri),
+    results.slice(2).map((r) => r[0]),
     [
       "mutable://app/users/alice",
       "mutable://app/users/bob",

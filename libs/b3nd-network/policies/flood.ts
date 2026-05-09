@@ -45,9 +45,8 @@
 
 import type {
   Message,
-  ObserveEvent,
+  Output,
   ProtocolInterfaceNode,
-  ReadResult,
   ReceiveResult,
   StatusResult,
 } from "../../b3nd-core/types.ts";
@@ -100,23 +99,21 @@ export function floodImpl(
 
     // ── read ─────────────────────────────────────────────────────────
 
-    async read<T = unknown>(urls: string[]): Promise<ReadResult<T>[]> {
-      const uriList = urls;
-      if (uriList.length === 0) return [];
+    async read<T = unknown>(urls: string[]): Promise<Output<T>[]> {
+      if (urls.length === 0) return [];
 
-      let lastErr: string | undefined;
+      // Try peers in order. First non-empty result wins. Empty (peer
+      // checked, nothing to return) is "not found" under option-A;
+      // try the next peer. Transport errors are swallowed per-peer.
       for (const p of peers) {
         try {
-          const results = await p.client.read<T>(uriList);
-          if (results.some((r) => r.success)) return results;
-        } catch (err) {
-          lastErr = err instanceof Error ? err.message : String(err);
+          const outputs = await p.client.read<T>(urls);
+          if (outputs.length > 0) return outputs;
+        } catch {
+          // try next peer
         }
       }
-      return uriList.map(() => ({
-        success: false,
-        error: lastErr ?? "no peer returned a match",
-      } as ReadResult<T>));
+      return [];
     },
 
     // ── observe ──────────────────────────────────────────────────────
@@ -124,8 +121,8 @@ export function floodImpl(
     async *observe(
       urls: string[],
       signal: AbortSignal,
-    ): AsyncIterable<ObserveEvent> {
-      const queue: ObserveEvent[] = [];
+    ): AsyncIterable<Output<string[]>> {
+      const queue: Output<string[]>[] = [];
       let wake: (() => void) | null = null;
 
       const forwarders = peers.map(async (p) => {

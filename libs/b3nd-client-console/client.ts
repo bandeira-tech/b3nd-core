@@ -20,9 +20,8 @@
 
 import type {
   Message,
-  ObserveEvent,
+  Output,
   ProtocolInterfaceNode,
-  ReadResult,
   ReceiveResult,
   StatusResult,
 } from "../b3nd-core/types.ts";
@@ -62,25 +61,21 @@ export class ConsoleClient implements ProtocolInterfaceNode {
     return Promise.resolve(results);
   }
 
-  read<T = unknown>(urls: string[]): Promise<ReadResult<T>[]> {
-    return Promise.resolve(
-      urls.map(() => ({
-        success: false as const,
-        error: "ConsoleClient is write-only",
-      })),
-    );
+  read<T = unknown>(_urls: string[]): Promise<Output<T>[]> {
+    // ConsoleClient is write-only — every read produces no Output.
+    return Promise.resolve([]);
   }
 
   observe(
     _urls: string[],
     _signal?: AbortSignal,
-  ): AsyncIterable<ObserveEvent> {
+  ): AsyncIterable<Output<string[]>> {
     return {
       [Symbol.asyncIterator]() {
         return {
           next: () =>
             Promise.resolve({
-              value: undefined as unknown as ObserveEvent,
+              value: undefined as unknown as Output<string[]>,
               done: true,
             }),
         };

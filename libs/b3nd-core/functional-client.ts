@@ -8,9 +8,8 @@
 
 import type {
   Message,
-  ObserveEvent,
+  Output,
   ProtocolInterfaceNode,
-  ReadResult,
   ReceiveResult,
   StatusResult,
 } from "./types.ts";
@@ -21,11 +20,11 @@ import type {
  */
 export interface FunctionalClientConfig {
   receive?: (msgs: Message[]) => Promise<ReceiveResult[]>;
-  read?: <T = unknown>(urls: string[]) => Promise<ReadResult<T>[]>;
+  read?: <T = unknown>(urls: string[]) => Promise<Output<T>[]>;
   observe?: (
     urls: string[],
     signal: AbortSignal,
-  ) => AsyncIterable<ObserveEvent>;
+  ) => AsyncIterable<Output<string[]>>;
   status?: () => Promise<StatusResult>;
 }
 
@@ -61,21 +60,18 @@ export class FunctionalClient implements ProtocolInterfaceNode {
     );
   }
 
-  read<T = unknown>(urls: string[]): Promise<ReadResult<T>[]> {
+  read<T = unknown>(urls: string[]): Promise<Output<T>[]> {
     if (this.config.read) {
       return this.config.read<T>(urls);
     }
-    return Promise.resolve(
-      urls.map(() =>
-        ({ success: false, error: "not implemented" }) as ReadResult<T>
-      ),
-    );
+    // No read config → empty result (option-A absence semantics).
+    return Promise.resolve([]);
   }
 
   async *observe(
     urls: string[],
     signal: AbortSignal,
-  ): AsyncIterable<ObserveEvent> {
+  ): AsyncIterable<Output<string[]>> {
     if (this.config.observe) {
       yield* this.config.observe(urls, signal);
     }

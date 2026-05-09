@@ -212,9 +212,10 @@ export class MockHttpServer {
   }
 
   /**
-   * Read one url. Supports the same fn dispatcher the real memory store
-   * does: `fn=read` (default), `fn=ls` (with optional trailing slash on
-   * the uri), `fn=count`. Anything else returns an unsupported error.
+   * Read one url. Returns flat `Output[]` = `[[uri, payload], ...]`.
+   * Supports the same fn dispatcher as MemoryStore — `read` (default),
+   * `ls`, `count`. Unknown fns throw (caller turns into 500). "Not
+   * found" surfaces as absence (empty array).
    */
   private readOne(url: string): unknown[] {
     const qIdx = url.indexOf("?");
@@ -225,7 +226,7 @@ export class MockHttpServer {
 
     if (fn === "read") {
       const record = this.storage.get(uri);
-      if (!record) return [{ success: false, error: "Not found" }];
+      if (!record) return []; // absence = not-found
       const data = record.data instanceof Uint8Array
         ? {
           __b3nd_binary__: true,
@@ -233,7 +234,7 @@ export class MockHttpServer {
           data: this.encodeB64(record.data),
         }
         : record.data;
-      return [{ success: true, record: { data } }];
+      return [[uri, data]];
     }
     if (fn === "ls") {
       const prefix = uri.endsWith("/") ? uri : `${uri}/`;
@@ -241,18 +242,16 @@ export class MockHttpServer {
       return Array.from(this.storage.entries())
         .filter(([k]) => k.startsWith(prefix))
         .map(([k, record]) =>
-          format === "uris"
-            ? { success: true, uri: k }
-            : { success: true, uri: k, record }
+          format === "uris" ? [k, undefined] : [k, record.data]
         );
     }
     if (fn === "count") {
       const prefix = uri.endsWith("/") ? uri : `${uri}/`;
       const n = Array.from(this.storage.keys())
         .filter((k) => k.startsWith(prefix)).length;
-      return [{ success: true, record: { data: n } }];
+      return [[`b3nd://count/${uri}`, n]];
     }
-    return [{ success: false, error: `unsupported fn '${fn}'` }];
+    throw new Error(`unsupported fn '${fn}'`);
   }
 
   private encodeB64(bytes: Uint8Array): string {

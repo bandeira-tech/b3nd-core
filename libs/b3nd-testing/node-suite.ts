@@ -71,8 +71,7 @@ export function runNodeSuite(
       const readResults = await node.read(["store://users/alice/profile"]);
 
       assertEquals(readResults.length, 1);
-      assertEquals(readResults[0].success, true);
-      assertEquals(readResults[0].record?.data, {
+      assertEquals(readResults[0]?.[1], {
         name: "Alice",
         email: "alice@example.com",
       });
@@ -100,10 +99,8 @@ export function runNodeSuite(
 
       assertEquals(read1.length, 1);
       assertEquals(read2.length, 1);
-      assertEquals(read1[0].success, true);
-      assertEquals(read2[0].success, true);
-      assertEquals(read1[0].record?.data, { name: "Alice" });
-      assertEquals(read2[0].record?.data, { name: "Bob" });
+      assertEquals(read1[0]?.[1], { name: "Alice" });
+      assertEquals(read2[0]?.[1], { name: "Bob" });
     },
   });
 
@@ -129,8 +126,7 @@ export function runNodeSuite(
       // Verify data was updated
       const readResults = await node.read(["store://users/alice/profile"]);
       assertEquals(readResults.length, 1);
-      assertEquals(readResults[0].success, true);
-      assertEquals(readResults[0].record?.data, {
+      assertEquals(readResults[0]?.[1], {
         name: "Alice Updated",
         version: 2,
       });
@@ -164,18 +160,12 @@ export function runNodeSuite(
         msg([[`${prefix}/charlie/profile`, { name: "Charlie" }]]),
       ]);
 
-      const results = await node.read(`${prefix}/`);
+      const results = await node.read([`${prefix}/`]);
 
       assertEquals(
         results.length >= 3,
         true,
         `Should return at least 3 items, got ${results.length}`,
-      );
-      const successResults = results.filter((r) => r.success);
-      assertEquals(
-        successResults.length >= 3,
-        true,
-        "Should have at least 3 successful reads",
       );
     },
   });
@@ -197,21 +187,10 @@ export function runNodeSuite(
         "store://users/nonexistent/profile",
       ]);
 
-      assertEquals(results.length, 3);
-
-      assertEquals(results[0].success, true);
-      if (results[0].success) {
-        assertEquals(results[0].record?.data, { name: "Alice" });
-      }
-      assertEquals(results[1].success, true);
-      if (results[1].success) {
-        assertEquals(results[1].record?.data, { name: "Bob" });
-      }
-      assertEquals(
-        results[2].success,
-        false,
-        "Nonexistent URI should fail",
-      );
+      // Option-A absence: 2 hits, 1 miss = 2 outputs.
+      assertEquals(results.length, 2);
+      assertEquals(results[0]?.[1], { name: "Alice" });
+      assertEquals(results[1]?.[1], { name: "Bob" });
     },
   });
 
@@ -228,7 +207,6 @@ export function runNodeSuite(
         ]);
 
         assertEquals(results[0].accepted, false);
-        assertEquals(typeof results[0].error, "string");
       },
     });
   }

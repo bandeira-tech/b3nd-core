@@ -83,8 +83,8 @@
 
 import type {
   Message,
+  Output,
   ProtocolInterfaceNode,
-  ReadResult,
 } from "../../b3nd-core/types.ts";
 import type { Peer, Policy } from "../types.ts";
 import { validatePeers } from "../network.ts";
@@ -112,7 +112,7 @@ export interface TellAndReadOptions {
    *   announcement without pulling anything (e.g., "I already have it").
    */
   onAnnounce?: (
-    ev: ReadResult<unknown>,
+    ev: Output<unknown>,
     source: Peer,
   ) => Promise<string[] | null> | string[] | null;
 }
@@ -155,15 +155,10 @@ export function tellAndRead(opts: TellAndReadOptions): TellAndReadBundle {
         // in parallel — announcements carrying many URIs (compact
         // block-style) shouldn't serialize into a chain of RTTs.
         const pulls = await Promise.all(
-          result.map(async (uri) => ({
-            uri,
-            results: await source.client.read<unknown>([uri]),
-          })),
+          result.map((uri) => source.client.read<unknown>([uri])),
         );
-        for (const { uri, results } of pulls) {
-          for (const r of results) {
-            if (r.success) yield { ...r, uri };
-          }
+        for (const outputs of pulls) {
+          for (const out of outputs) yield out;
         }
       },
     },

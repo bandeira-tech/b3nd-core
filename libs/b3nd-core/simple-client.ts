@@ -37,8 +37,8 @@
 
 import type {
   Message,
+  Output,
   ProtocolInterfaceNode,
-  ReadResult,
   ReceiveResult,
   StatusResult,
   Store,
@@ -74,7 +74,7 @@ export class SimpleClient extends ObserveEmitter
     }));
   }
 
-  read<T = unknown>(urls: string[]): Promise<ReadResult<T>[]> {
+  read<T = unknown>(urls: string[]): Promise<Output<T>[]> {
     return this.store.read<T>(urls);
   }
 

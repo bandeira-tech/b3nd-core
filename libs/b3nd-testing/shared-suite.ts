@@ -94,8 +94,7 @@ export function runSharedSuite(
       const readResults = await client.read(["store://users/alice/profile"]);
 
       assertEquals(readResults.length, 1);
-      assertEquals(readResults[0].success, true);
-      assertEquals(readResults[0].record?.data, {
+      assertEquals(readResults[0]?.[1], {
         name: "Alice",
         email: "alice@example.com",
       });
@@ -103,16 +102,15 @@ export function runSharedSuite(
   });
 
   Deno.test({
-    name: `${suiteName} - read non-existent returns error`,
+    name: `${suiteName} - read non-existent yields no Output (absence)`,
     ...noSanitize,
     fn: async () => {
       const client = await Promise.resolve(factories.happy());
 
       const readResults = await client.read(["store://users/nobody/profile"]);
 
-      assertEquals(readResults.length, 1);
-      assertEquals(readResults[0].success, false);
-      assertEquals(typeof readResults[0].error, "string");
+      // Option-A: not-found surfaces as absence.
+      assertEquals(readResults.length, 0);
     },
   });
 
@@ -133,12 +131,7 @@ export function runSharedSuite(
         "store://users/scalar-string/data",
       ]);
       assertEquals(readResults.length, 1);
-      assertEquals(
-        readResults[0].success,
-        true,
-        "String data read should succeed",
-      );
-      assertEquals(readResults[0].record?.data, "hello world");
+      assertEquals(readResults[0]?.[1], "hello world");
     },
   });
 
@@ -157,12 +150,7 @@ export function runSharedSuite(
         "store://users/scalar-number/data",
       ]);
       assertEquals(readResults.length, 1);
-      assertEquals(
-        readResults[0].success,
-        true,
-        "Number data read should succeed",
-      );
-      assertEquals(readResults[0].record?.data, 42);
+      assertEquals(readResults[0]?.[1], 42);
     },
   });
 
@@ -179,12 +167,7 @@ export function runSharedSuite(
 
       const readResults = await client.read(["store://users/scalar-bool/data"]);
       assertEquals(readResults.length, 1);
-      assertEquals(
-        readResults[0].success,
-        true,
-        "Boolean data read should succeed",
-      );
-      assertEquals(readResults[0].record?.data, true);
+      assertEquals(readResults[0]?.[1], true);
     },
   });
 
@@ -201,12 +184,7 @@ export function runSharedSuite(
 
       const readResults = await client.read(["store://users/scalar-null/data"]);
       assertEquals(readResults.length, 1);
-      assertEquals(
-        readResults[0].success,
-        true,
-        "Null data read should succeed",
-      );
-      assertEquals(readResults[0].record?.data, null);
+      assertEquals(readResults[0]?.[1], null);
     },
   });
 
@@ -225,12 +203,7 @@ export function runSharedSuite(
         "store://users/scalar-empty/data",
       ]);
       assertEquals(readResults.length, 1);
-      assertEquals(
-        readResults[0].success,
-        true,
-        "Empty string data read should succeed",
-      );
-      assertEquals(readResults[0].record?.data, "");
+      assertEquals(readResults[0]?.[1], "");
     },
   });
 
@@ -247,12 +220,7 @@ export function runSharedSuite(
 
       const readResults = await client.read(["store://users/scalar-zero/data"]);
       assertEquals(readResults.length, 1);
-      assertEquals(
-        readResults[0].success,
-        true,
-        "Zero data read should succeed",
-      );
-      assertEquals(readResults[0].record?.data, 0);
+      assertEquals(readResults[0]?.[1], 0);
     },
   });
 
@@ -273,8 +241,7 @@ export function runSharedSuite(
 
       const readResults = await client.read(["store://balance/alice/utxo-1"]);
       assertEquals(readResults.length, 1);
-      assertEquals(readResults[0].success, true);
-      assertEquals(readResults[0].record?.data, { values: { fire: 100 } });
+      assertEquals(readResults[0]?.[1], { values: { fire: 100 } });
     },
   });
 
@@ -294,8 +261,7 @@ export function runSharedSuite(
 
       const readResults = await client.read(["store://balance/alice/utxo-2"]);
       assertEquals(readResults.length, 1);
-      assertEquals(readResults[0].success, true);
-      assertEquals(readResults[0].record?.data, {
+      assertEquals(readResults[0]?.[1], {
         values: { fire: 50, usd: 200 },
         memo: "deposit",
       });
@@ -329,9 +295,9 @@ export function runSharedSuite(
       ]);
 
       assertEquals(readResults.length, 3);
-      assertEquals(readResults[0].record?.data, { name: "Alice" });
-      assertEquals(readResults[1].record?.data, { name: "Bob" });
-      assertEquals(readResults[2].record?.data, { name: "Charlie" });
+      assertEquals(readResults[0]?.[1], { name: "Alice" });
+      assertEquals(readResults[1]?.[1], { name: "Bob" });
+      assertEquals(readResults[2]?.[1], { name: "Charlie" });
     },
   });
 
@@ -356,18 +322,9 @@ export function runSharedSuite(
       ]);
 
       assertEquals(results.length, 3);
-      assertEquals(results[0].success, true);
-      if (results[0].success) {
-        assertEquals(results[0].record?.data, { v: 1 });
-      }
-      assertEquals(results[1].success, true);
-      if (results[1].success) {
-        assertEquals(results[1].record?.data, { v: 2 });
-      }
-      assertEquals(results[2].success, true);
-      if (results[2].success) {
-        assertEquals(results[2].record?.data, { v: 3 });
-      }
+      assertEquals(results[0]?.[1], { v: 1 });
+      assertEquals(results[1]?.[1], { v: 2 });
+      assertEquals(results[2]?.[1], { v: 3 });
     },
   });
 
@@ -386,9 +343,9 @@ export function runSharedSuite(
         "store://users/partial-missing/profile",
       ]);
 
-      assertEquals(results.length, 2);
-      assertEquals(results[0].success, true);
-      assertEquals(results[1].success, false);
+      // 1 hit + 1 miss; option-A absence drops the miss.
+      assertEquals(results.length, 1);
+      assertEquals(results[0]?.[0], "store://users/partial-a/profile");
     },
   });
 
@@ -411,12 +368,6 @@ export function runSharedSuite(
         results.length >= 3,
         true,
         `Should return at least 3 items, got ${results.length}`,
-      );
-      const successResults = results.filter((r) => r.success);
-      assertEquals(
-        successResults.length >= 3,
-        true,
-        "Should have at least 3 successful reads",
       );
     },
   });
@@ -483,17 +434,12 @@ export function runSharedSuite(
 
         assertEquals(readResults.length, 1);
         assertEquals(
-          readResults[0].success,
-          true,
-          "Binary read should succeed",
-        );
-        assertEquals(
-          readResults[0].record?.data instanceof Uint8Array,
+          readResults[0]?.[1] instanceof Uint8Array,
           true,
           "Read data should be Uint8Array",
         );
 
-        const readData = readResults[0].record?.data as Uint8Array;
+        const readData = readResults[0]?.[1] as Uint8Array;
         assertEquals(
           readData.length,
           binaryData.length,
@@ -537,13 +483,8 @@ export function runSharedSuite(
         ]);
 
         assertEquals(readResults.length, 1);
-        assertEquals(
-          readResults[0].success,
-          true,
-          "Large binary read should succeed",
-        );
 
-        const readData = readResults[0].record?.data as Uint8Array;
+        const readData = readResults[0]?.[1] as Uint8Array;
         assertEquals(
           readData.length,
           binaryData.length,
@@ -588,8 +529,7 @@ export function runSharedSuite(
         "store://users/overwrite/profile",
       ]);
       assertEquals(readResults.length, 1);
-      assertEquals(readResults[0].success, true);
-      assertEquals(readResults[0].record?.data, {
+      assertEquals(readResults[0]?.[1], {
         name: "Alice Updated",
         version: 2,
       });
@@ -614,8 +554,7 @@ export function runSharedSuite(
       ]);
 
       const readResults = await client.read(["store://balance/overwrite/utxo"]);
-      assertEquals(readResults[0].success, true);
-      assertEquals(readResults[0].record?.data, {
+      assertEquals(readResults[0]?.[1], {
         values: { fire: 75, usd: 25 },
         memo: "updated",
       });
@@ -641,7 +580,6 @@ export function runSharedSuite(
         ]);
 
         assertEquals(results[0].accepted, false);
-        assertEquals(typeof results[0].error, "string");
       },
     });
   }
@@ -658,11 +596,16 @@ export function runSharedSuite(
         ]);
 
         assertEquals(results[0].accepted, false);
-        assertEquals(typeof results[0].error, "string");
 
-        const readResults = await client.read(["store://users/test/data"]);
-        assertEquals(readResults.length, 1);
-        assertEquals(readResults[0].success, false);
+        // Transport errors throw under option-A (vs. per-url failure
+        // results in the previous design).
+        let threw = false;
+        try {
+          await client.read(["store://users/test/data"]);
+        } catch {
+          threw = true;
+        }
+        assertEquals(threw, true, "read should throw on transport failure");
       },
     });
   }

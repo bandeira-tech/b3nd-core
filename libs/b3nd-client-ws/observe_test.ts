@@ -17,7 +17,9 @@
  *     `{ id, type: "observe", payload: { urls: string[] } }`
  *
  *   Event push (server → client, repeated):
- *     `{ id, success: true, data: { uri: string } }`
+ *     `{ id, success: true, data: [metaUri, uris] }`
+ *     where `data` is an `Output<string[]>` package — `metaUri` is
+ *     `b3nd://observe` and `uris` is the list of changed uris.
  *
  *   End-of-stream (server → client, optional):
  *     `{ id, success: true, data: null }`
@@ -28,11 +30,12 @@
 
 import { assertEquals } from "@std/assert";
 import { WebSocketClient } from "./mod.ts";
+import { OBSERVE_URI } from "../b3nd-core/url.ts";
 
 interface ObserveSub {
   id: string;
   urls: string[];
-  push: (uri: string) => void;
+  push: (uris: string[]) => void;
   end: () => void;
 }
 
@@ -88,10 +91,14 @@ class ObserveMockWebSocket {
       this.subs.set(id, {
         id,
         urls,
-        push: (uri) => {
+        push: (uris) => {
           this.dispatchEvent({
             type: "message",
-            data: JSON.stringify({ id, success: true, data: { uri } }),
+            data: JSON.stringify({
+              id,
+              success: true,
+              data: [OBSERVE_URI, uris],
+            }),
           });
         },
         end: () => {
@@ -141,7 +148,7 @@ Deno.test("WS observe - subscribe frame shape + event delivery", async () => {
 
     const done = (async () => {
       for await (const ev of client.observe(["mutable://app/*"], ac.signal)) {
-        seen.push(ev.uri);
+        seen.push(ev[1][0]);
         if (seen.length >= 2) ac.abort();
       }
     })();
@@ -161,8 +168,8 @@ Deno.test("WS observe - subscribe frame shape + event delivery", async () => {
 
     // Drive two events, expect them to flow through to the iterator.
     const sub = [...ws.subs.values()][0];
-    sub.push("mutable://app/a");
-    sub.push("mutable://app/b");
+    sub.push(["mutable://app/a"]);
+    sub.push(["mutable://app/b"]);
 
     await done;
     assertEquals(seen, ["mutable://app/a", "mutable://app/b"]);
@@ -188,7 +195,7 @@ Deno.test("WS observe - server end-of-stream terminates iterator", async () => {
 
     const done = (async () => {
       for await (const ev of client.observe(["mutable://x/*"], ac.signal)) {
-        seen.push(ev.uri);
+        seen.push(ev[1][0]);
       }
     })();
 
@@ -197,7 +204,7 @@ Deno.test("WS observe - server end-of-stream terminates iterator", async () => {
     await waitFor(() => ws.subs.size > 0);
     const sub = [...ws.subs.values()][0];
 
-    sub.push("mutable://x/1");
+    sub.push(["mutable://x/1"]);
     sub.end(); // server signals end-of-stream
 
     await done;

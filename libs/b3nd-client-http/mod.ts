@@ -8,15 +8,14 @@
 import type {
   HttpClientConfig,
   Message,
-  ObserveEvent,
+  Output,
   ProtocolInterfaceNode,
-  ReadResult,
   ReceiveResult,
   StatusResult,
 } from "../b3nd-core/types.ts";
 import { encodeBase64 } from "../b3nd-core/encoding.ts";
 import { decodeBinaryFromJson } from "../b3nd-core/binary.ts";
-import { routingKey } from "../b3nd-core/url.ts";
+import { OBSERVE_URI, routingKey } from "../b3nd-core/url.ts";
 import { openSseStream } from "./sse.ts";
 
 /**
@@ -161,43 +160,38 @@ export class HttpClient implements ProtocolInterfaceNode {
     return results as ReceiveResult[];
   }
 
-  async read<T = unknown>(urls: string[]): Promise<ReadResult<T>[]> {
+  async read<T = unknown>(urls: string[]): Promise<Output<T>[]> {
     if (urls.length === 0) return [];
-    try {
-      const response = await this.request("/api/v1/read", {
-        method: "POST",
-        body: JSON.stringify({ urls }),
-      });
-      if (!response.ok) {
-        await response.text();
-        return urls.map(() => ({
-          success: false,
-          error: `Read failed: ${response.statusText}`,
-        }));
-      }
-      const body = await response.json() as ReadResult<T>[];
-      // Decode binary payloads embedded in records.
-      for (const r of body) {
-        if (r.success && r.record) {
-          r.record.data = decodeBinaryFromJson(r.record.data) as T;
-        }
-      }
-      return body;
-    } catch (error) {
-      const msg = error instanceof Error ? error.message : String(error);
-      return urls.map(() => ({ success: false, error: msg }));
+    const response = await this.request("/api/v1/read", {
+      method: "POST",
+      body: JSON.stringify({ urls }),
+    });
+    if (!response.ok) {
+      const body = await response.text();
+      throw new Error(
+        `HttpClient.read: ${response.status} ${response.statusText}${
+          body ? `: ${body}` : ""
+        }`,
+      );
     }
+    const body = await response.json() as Output<T>[];
+    // Decode binary payloads embedded in Output payloads.
+    for (let i = 0; i < body.length; i++) {
+      const [uri, payload] = body[i];
+      body[i] = [uri, decodeBinaryFromJson(payload) as T];
+    }
+    return body;
   }
 
   async *observe(
     urls: string[],
     signal: AbortSignal,
-  ): AsyncIterable<ObserveEvent> {
+  ): AsyncIterable<Output<string[]>> {
     if (urls.length === 0) return;
 
     // Open one SSE stream per url's routing key. The query string is
     // ignored — observe is INV-style and only the uri pattern matters.
-    const queue: ObserveEvent[] = [];
+    const queue: Output<string[]>[] = [];
     let wake: (() => void) | null = null;
 
     const forwarders = urls.map(async (url) => {
@@ -212,13 +206,19 @@ export class HttpClient implements ProtocolInterfaceNode {
       try {
         for await (const event of openSseStream(sseUrl, { signal })) {
           if (signal.aborted) return;
-          if (typeof event.uri === "string") {
-            queue.push({ uri: event.uri });
-            const w = wake;
-            if (w) {
-              wake = null;
-              w();
-            }
+          // Each SSE event carries one uri (or several, when the
+          // server batches). Normalize to Output<string[]>.
+          const uris = Array.isArray(event.uris)
+            ? (event.uris as string[])
+            : typeof event.uri === "string"
+            ? [event.uri]
+            : [];
+          if (uris.length === 0) continue;
+          queue.push([OBSERVE_URI, uris]);
+          const w = wake;
+          if (w) {
+            wake = null;
+            w();
           }
         }
       } catch {

@@ -211,11 +211,11 @@ export function httpApi(
     }
 
     // ── Read (batch) ──
-    // Body: `{ urls: string[] }`. Returns `ReadResult[]` directly. The
-    // server forwards each url to `rig.read`; the executing client owns
-    // the `fn`/params interpretation. Binary `record.data` is wrapped
-    // for JSON transport via `encodeBinaryForJson`; the client undoes
-    // it with `decodeBinaryFromJson`.
+    // Body: `{ urls: string[] }`. Returns flat `Output[]` =
+    // `[[uri, payload], ...]` directly — same shape as receive accepts.
+    // The executing client owns `fn`/params interpretation. Binary
+    // payloads are wrapped via `encodeBinaryForJson` and undone by the
+    // client with `decodeBinaryFromJson`.
     if (method === "POST" && path === "/api/v1/read") {
       let body: unknown;
       try {
@@ -227,14 +227,19 @@ export function httpApi(
       if (!Array.isArray(urls) || !urls.every((u) => typeof u === "string")) {
         return json({ error: "Expected { urls: string[] }" }, 400);
       }
-      const results = await rig.read(urls as string[]);
-      // Encode any binary payload into a JSON-safe wrapper.
-      for (const r of results) {
-        if (r.success && r.record) {
-          r.record.data = encodeBinaryForJson(r.record.data);
-        }
+      try {
+        const outputs = await rig.read(urls as string[]);
+        const encoded = outputs.map(
+          ([uri, payload]) =>
+            [uri, encodeBinaryForJson(payload)] as [string, unknown],
+        );
+        return json(encoded);
+      } catch (err) {
+        return json(
+          { error: err instanceof Error ? err.message : String(err) },
+          500,
+        );
       }
-      return json(results);
     }
 
     // ── SSE Observe ──
@@ -271,14 +276,13 @@ export function httpApi(
           (async () => {
             try {
               const listUri = uri.endsWith("/") ? uri : `${uri}/`;
-              const results = await rig.read([listUri]);
-              for (const item of results) {
+              const outputs = await rig.read([listUri]);
+              for (const [outUri] of outputs) {
                 if (sub.closed) break;
-                if (!item.success || !item.uri) continue;
                 const now = Date.now();
                 sub.write(
                   `id: ${now}\nevent: write\ndata: ${
-                    JSON.stringify({ uri: item.uri })
+                    JSON.stringify({ uri: outUri })
                   }\n\n`,
                 );
               }

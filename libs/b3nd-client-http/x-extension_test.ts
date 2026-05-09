@@ -5,7 +5,7 @@
  * Pins that:
  *  - `fn=x-<ns>.<name>` survives the wire from client → server,
  *  - extension params (`x-*` keys) reach the executing client intact,
- *  - the server returns the executing client's `ReadResult` unchanged.
+ *  - the server returns the executing client's `Output` unchanged.
  */
 
 import { assertEquals } from "@std/assert";
@@ -16,25 +16,20 @@ import { connection } from "../b3nd-rig/connection.ts";
 import { httpApi } from "../b3nd-rig/http.ts";
 import { Rig } from "../b3nd-rig/rig.ts";
 import { parseUrl } from "../b3nd-core/url.ts";
+import type { Output } from "../b3nd-core/types.ts";
 
 Deno.test("HTTP - x-* extension round-trip", async () => {
   // Echo client: parses each url and returns the parsed { fn, params, ext }
-  // as the record's data. If the url makes it through the rig + HTTP
-  // wire intact, the echoed payload matches what we sent.
+  // as the payload of an Output addressed at the original url.
   const echoClient = new FunctionalClient({
     read: <T = unknown>(urls: string[]) =>
-      Promise.resolve(urls.map((url) => {
+      Promise.resolve(urls.map((url): Output<T> => {
         const parsed = parseUrl(url);
-        return {
-          success: true as const,
-          record: {
-            data: {
-              fn: parsed.fn,
-              params: parsed.params,
-              ext: parsed.ext,
-            } as T,
-          },
-        };
+        return [url, {
+          fn: parsed.fn,
+          params: parsed.params,
+          ext: parsed.ext,
+        } as T];
       })),
   });
 
@@ -61,11 +56,10 @@ Deno.test("HTTP - x-* extension round-trip", async () => {
       ext: Record<string, string>;
     }>([url]);
 
-    assertEquals(r.success, true);
-    assertEquals(r.record?.data.fn, "x-test.scan");
-    assertEquals(r.record?.data.params.limit, 50);
-    assertEquals(r.record?.data.ext["x-test.cursor"], "abc123");
-    assertEquals(r.record?.data.ext["x-test.where"], "active=true");
+    assertEquals(r?.[1].fn, "x-test.scan");
+    assertEquals(r?.[1].params.limit, 50);
+    assertEquals(r?.[1].ext["x-test.cursor"], "abc123");
+    assertEquals(r?.[1].ext["x-test.where"], "active=true");
   } finally {
     await server.shutdown();
   }
