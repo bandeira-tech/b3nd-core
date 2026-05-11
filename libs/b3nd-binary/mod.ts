@@ -86,9 +86,7 @@ const BINARY_MARKER = "__b3nd_binary__";
 const UNDEFINED_MARKER = "__b3nd_undefined__";
 
 /**
- * Wire shape carrying a `Uint8Array` through JSON. Only the marker key
- * is checked on decode — extra fields (e.g. legacy `encoding: "base64"`
- * from older senders) are tolerated.
+ * Wire shape carrying a `Uint8Array` through JSON.
  */
 export interface EncodedBinary {
   [BINARY_MARKER]: true;
@@ -168,10 +166,6 @@ export function encodeBinaryForJson(value: unknown): unknown {
  * objects to:
  *   - decode binary markers back to `Uint8Array`
  *   - decode undefined markers back to `undefined`
- *
- * Tolerant of senders that emit extra fields on the binary marker
- * (e.g. legacy `encoding: "base64"`) — the marker key alone is
- * authoritative.
  */
 export function decodeBinaryFromJson<T>(value: T): T | Uint8Array | undefined {
   if (isEncodedUndefined(value)) return undefined;

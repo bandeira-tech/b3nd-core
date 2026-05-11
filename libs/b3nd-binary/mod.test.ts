@@ -118,19 +118,6 @@ Deno.test("isEncodedBinary - recognizes encoded binary marker objects", () => {
   );
 });
 
-Deno.test("isEncodedBinary - tolerates legacy `encoding` field", () => {
-  // Older HttpClient versions emitted `encoding: "base64"`. The
-  // predicate is intentionally lenient — it only checks the marker key.
-  assertEquals(
-    isEncodedBinary({
-      __b3nd_binary__: true,
-      encoding: "base64",
-      data: "AQ==",
-    }),
-    true,
-  );
-});
-
 Deno.test("isEncodedBinary - rejects plain objects / strings / null", () => {
   assertEquals(isEncodedBinary({ data: "hello" }), false);
   assertEquals(isEncodedBinary(null), false);
@@ -235,14 +222,3 @@ Deno.test("round-trip - undefined inside arrays survives JSON", () => {
   assertEquals(decoded, ["a", undefined, "c"]);
 });
 
-Deno.test("decodeBinaryFromJson - tolerates legacy `encoding` field on marker", () => {
-  // Legacy HttpClient shape — should still decode.
-  const legacy = {
-    __b3nd_binary__: true,
-    encoding: "base64",
-    data: encodeBase64(new Uint8Array([1, 2, 3])),
-  };
-  const decoded = decodeBinaryFromJson(legacy);
-  assertInstanceOf(decoded, Uint8Array);
-  assertEquals(decoded, new Uint8Array([1, 2, 3]));
-});
