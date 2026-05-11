@@ -13,7 +13,7 @@ import {
   type TestClientFactories,
 } from "../b3nd-testing/shared-suite.ts";
 import { MemoryStore } from "../b3nd-client-memory/store.ts";
-import { encodeBinaryForJson } from "../b3nd-core/binary.ts";
+import { encodeBinaryForJson } from "../b3nd-binary/mod.ts";
 
 /**
  * Mock WebSocket class that simulates WebSocket behavior without network

@@ -37,13 +37,15 @@ export type {
 export { ErrorCode, Errors } from "./libs/b3nd-core/types.ts";
 
 export {
+  decodeBase64,
   decodeBinaryFromJson,
+  decodeHex,
+  encodeBase64,
   encodeBinaryForJson,
+  encodeHex,
   isBinary,
   isEncodedBinary,
-} from "./libs/b3nd-core/binary.ts";
-
-export { decodeHex, encodeHex } from "./libs/b3nd-core/encoding.ts";
+} from "./libs/b3nd-binary/mod.ts";
 
 // ── Protocol clients (Store → ProtocolInterfaceNode) ──
 

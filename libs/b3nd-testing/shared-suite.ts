@@ -394,6 +394,40 @@ export function runSharedSuite(
     },
   });
 
+  // ── Wire faithfulness: undefined / null in nested payloads ─────────
+
+  Deno.test({
+    name:
+      `${suiteName} - round-trips nested undefined/null distinctly through the wire`,
+    ...noSanitize,
+    fn: async () => {
+      const client = await Promise.resolve(factories.happy());
+
+      // Write a payload that intentionally contains both `undefined`
+      // (inside an object field) and `null` (intentional stored value).
+      // The transport layer must preserve the distinction — `undefined`
+      // means "absent" elsewhere, but here it's deliberate.
+      const original = {
+        miss: undefined,
+        deleted: null,
+        nested: { also_miss: undefined, present: 1 },
+        list: ["a", undefined, "c"],
+      };
+      const uri = `store://users/nested-${Date.now()}/data`;
+
+      const writeResult = await client.receive([msg([[uri, original]])]);
+      assertEquals(writeResult[0].accepted, true);
+
+      const [result] = await client.read<typeof original>([uri]);
+      const payload = result?.[1];
+      assertEquals(payload?.miss, undefined);
+      assertEquals(payload?.deleted, null);
+      assertEquals(payload?.nested.also_miss, undefined);
+      assertEquals(payload?.nested.present, 1);
+      assertEquals(payload?.list, ["a", undefined, "c"]);
+    },
+  });
+
   // ── Binary data tests ──────────────────────────────────────────────
 
   const supportsBinary = factories.supportsBinary !== false;

@@ -16,27 +16,11 @@
  * - `validationError`     — receive always rejects with a fixed error
  */
 
-import { decodeBase64 } from "../b3nd-core/encoding.ts";
-import { encodeBinaryForJson } from "../b3nd-core/binary.ts";
+import {
+  decodeBinaryFromJson,
+  encodeBinaryForJson,
+} from "../b3nd-binary/mod.ts";
 import { MemoryStore } from "../b3nd-client-memory/store.ts";
-
-/** Wire shape used to carry `Uint8Array` through JSON. */
-interface BinaryMarker {
-  __b3nd_binary__: true;
-  encoding: "base64";
-  data: string;
-}
-
-function isBinaryMarker(v: unknown): v is BinaryMarker {
-  return v != null && typeof v === "object" &&
-    (v as Record<string, unknown>).__b3nd_binary__ === true &&
-    (v as Record<string, unknown>).encoding === "base64" &&
-    typeof (v as Record<string, unknown>).data === "string";
-}
-
-function deserializeMsgData(data: unknown): unknown {
-  return isBinaryMarker(data) ? decodeBase64(data.data) : data;
-}
 
 export interface MockServerConfig {
   /** Port to run server on */
@@ -186,7 +170,7 @@ export class MockHttpServer {
             const [outUri, outPayload] = output;
             writeEntries.push({
               uri: outUri as string,
-              data: deserializeMsgData(outPayload),
+              data: decodeBinaryFromJson(outPayload),
             });
           }
         }
@@ -195,7 +179,7 @@ export class MockHttpServer {
         // Direct write — store payload at the message URI
         await this.store.write([{
           uri: msgUri as string,
-          data: deserializeMsgData(msgPayload),
+          data: decodeBinaryFromJson(msgPayload),
         }]);
       }
 

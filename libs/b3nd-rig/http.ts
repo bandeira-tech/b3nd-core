@@ -32,8 +32,10 @@
  * ```
  */
 
-import { decodeBase64 } from "../b3nd-core/encoding.ts";
-import { encodeBinaryForJson } from "../b3nd-core/binary.ts";
+import {
+  decodeBinaryFromJson,
+  encodeBinaryForJson,
+} from "../b3nd-binary/mod.ts";
 import type { Rig } from "./rig.ts";
 import type { RigEvent } from "./events.ts";
 
@@ -42,22 +44,6 @@ import type { RigEvent } from "./events.ts";
 export interface HttpApiOptions {
   /** Extra metadata merged into status responses. */
   statusMeta?: Record<string, unknown>;
-}
-
-// ── Binary deserialization ──
-
-/** Unwrap base64-encoded binary marker objects back to Uint8Array. */
-function deserializeBinary(data: unknown): unknown {
-  if (
-    data &&
-    typeof data === "object" &&
-    (data as Record<string, unknown>).__b3nd_binary__ === true &&
-    (data as Record<string, unknown>).encoding === "base64" &&
-    typeof (data as Record<string, unknown>).data === "string"
-  ) {
-    return decodeBase64((data as Record<string, unknown>).data as string);
-  }
-  return data;
 }
 
 // ── URI helpers ──
@@ -200,7 +186,7 @@ export function httpApi(
             400,
           );
         }
-        batch.push([uri, deserializeBinary(rawPayload)]);
+        batch.push([uri, decodeBinaryFromJson(rawPayload)]);
       }
       // Decomposition is a protocol concern (install messageDataProgram +
       // messageDataHandler on the Rig if you want envelope semantics);

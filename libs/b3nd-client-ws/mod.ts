@@ -18,7 +18,7 @@ import type {
 import {
   decodeBinaryFromJson,
   encodeBinaryForJson,
-} from "../b3nd-core/binary.ts";
+} from "../b3nd-binary/mod.ts";
 
 export class WebSocketClient implements ProtocolInterfaceNode {
   private config: WebSocketClientConfig;
