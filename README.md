@@ -89,35 +89,33 @@ const outputs = await pin.read([
 // ]
 ```
 
-### Errors and absence (option A)
+### Errors and content
 
 The framework speaks one shape — `Output[]` — end-to-end. There is no explicit
-failure channel:
+failure channel and no framework opinion on payload content:
 
 - **Transport / programmer errors throw**: network down, malformed url, no route
   accepts, unknown reserved fn — they propagate as exceptions.
-- **"Not found" surfaces as absence**: a missing uri simply doesn't appear in
-  the result. Callers detect by comparing input uris to result uris (or by
-  `outputs.length`).
-- **Domain-level errors live inside the payload**: a protocol can encode
-  auth-denied or quota-exceeded into the Output payload at a reserved key. The
-  framework treats payloads as opaque.
+- **Anything else lives in the payload by protocol convention.** Miss
+  representation, auth refusals, domain errors, binary encoding — all chosen
+  and documented by your store / canon, not by the framework.
 
-Synthetic addresses (`fn=count` answers, observe envelopes, anything the
-framework had to invent) live under the reserved `b3nd://` namespace.
+The framework reserves the `b3nd://` namespace for any uri a protocol has to
+invent (count answers, observe envelopes, cursors). Each protocol picks its own
+sub-paths.
 
 ### Observe (INV-style)
 
-`observe` yields `Output<string[]>` packages — `[meta, uris]` — where `meta` is
-`b3nd://observe` and `uris` is the list of uris that changed in this batch. Read
-each uri to learn its current state.
+`observe` yields `Output<string[]>` packages — `[inputUrl, uris]` — where
+`inputUrl` echoes the caller's subscription url whose pattern matched and
+`uris` is the list of uris that changed in this batch. Read each uri to learn
+its current state.
 
 ```typescript
 const ac = new AbortController();
 for await (const [, uris] of pin.observe(["mutable://app/*"], ac.signal)) {
   const outputs = await pin.read(uris);
   for (const [uri, payload] of outputs) console.log(uri, payload);
-  // uris missing from `outputs` were deleted (option-A absence).
 }
 ```
 

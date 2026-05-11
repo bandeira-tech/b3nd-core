@@ -16,47 +16,6 @@ import type {
   WebSocketResponse,
 } from "../b3nd-core/types.ts";
 
-// JSON-wire fix: `undefined` doesn't survive JSON. The framework's
-// read contract says "miss = undefined payload"; these walkers stamp
-// a marker on undefined leaves before send and unwrap them on receive
-// so the distinction with stored `null` is preserved. Binary content
-// is the caller's concern — see `@bandeira-tech/b3nd-core/binary`.
-const UNDEFINED_MARKER = "__b3nd_undefined__";
-
-function encodeUndefinedForJson(value: unknown): unknown {
-  if (value === undefined) return { [UNDEFINED_MARKER]: true };
-  if (Array.isArray(value)) return value.map(encodeUndefinedForJson);
-  if (value !== null && typeof value === "object") {
-    const result: Record<string, unknown> = {};
-    for (const [k, v] of Object.entries(value)) {
-      result[k] = encodeUndefinedForJson(v);
-    }
-    return result;
-  }
-  return value;
-}
-
-function decodeUndefinedFromJson<T>(value: T): T | undefined {
-  if (
-    value !== null &&
-    typeof value === "object" &&
-    (value as Record<string, unknown>)[UNDEFINED_MARKER] === true
-  ) {
-    return undefined;
-  }
-  if (Array.isArray(value)) {
-    return value.map(decodeUndefinedFromJson) as unknown as T;
-  }
-  if (value !== null && typeof value === "object") {
-    const result: Record<string, unknown> = {};
-    for (const [k, v] of Object.entries(value)) {
-      result[k] = decodeUndefinedFromJson(v);
-    }
-    return result as unknown as T;
-  }
-  return value;
-}
-
 export class WebSocketClient implements ProtocolInterfaceNode {
   private config: WebSocketClientConfig;
   private ws: WebSocket | null = null;
@@ -322,12 +281,9 @@ export class WebSocketClient implements ProtocolInterfaceNode {
    */
   async receive(msgs: Message[]): Promise<ReceiveResult[]> {
     try {
-      const encodedMsgs = msgs.map((
-        [uri, payload],
-      ) => [uri, encodeUndefinedForJson(payload)]);
       const results = await this.sendRequest<ReceiveResult[]>(
         "receive",
-        encodedMsgs,
+        msgs,
       );
       return results;
     } catch (error) {
@@ -343,13 +299,11 @@ export class WebSocketClient implements ProtocolInterfaceNode {
   async read<T = unknown>(urls: string[]): Promise<Output<T>[]> {
     if (urls.length === 0) return [];
     const outputs = await this.sendRequest<Output<T>[]>("read", { urls });
-    const items = Array.isArray(outputs) ? outputs : [outputs];
-    // Unwrap `undefined` markers so the framework's `miss = undefined`
-    // semantic survives JSON. Binary in payloads is the caller's
-    // concern — opt in via `@bandeira-tech/b3nd-core/binary`.
-    return items.map(([uri, payload]) =>
-      [uri, decodeUndefinedFromJson(payload) as T] as Output<T>
-    );
+    // Payloads pass through as JSON-parsed values. Content semantics
+    // (miss representation, binary encoding, etc.) are the caller's
+    // concern — opt in via content codecs like
+    // `@bandeira-tech/b3nd-core/binary` if you need them.
+    return Array.isArray(outputs) ? outputs : [outputs];
   }
 
   async *observe(

@@ -2,15 +2,10 @@
  * Mock HTTP Server for testing HttpClient.
  *
  * Acts as a wire-format adapter only — receive/read are delegated to a
- * `MemoryStore`. The mock owns:
- * - HTTP framing (routes, JSON encode/decode, status codes)
- * - The `undefined` marker preservation that JSON transports apply so
- *   the framework's `miss = undefined payload` semantic survives the
- *   wire. Binary content is the caller's concern (see
- *   `@bandeira-tech/b3nd-core/binary`); the mock doesn't touch it.
- *
- * It does not re-implement read/ls/count semantics or answer-address
- * conventions — that's MemoryStore's job.
+ * `MemoryStore`. The mock owns HTTP framing (routes, JSON encode/decode,
+ * status codes). It does not interpret payloads in any way — content
+ * semantics (miss representation, binary encoding, etc.) are the
+ * caller/protocol's concern.
  *
  * Modes:
  * - `happy`               — fully functional
@@ -19,42 +14,6 @@
  */
 
 import { MemoryStore } from "../b3nd-client-memory/store.ts";
-
-const UNDEFINED_MARKER = "__b3nd_undefined__";
-
-function encodeUndefinedForJson(value: unknown): unknown {
-  if (value === undefined) return { [UNDEFINED_MARKER]: true };
-  if (Array.isArray(value)) return value.map(encodeUndefinedForJson);
-  if (value !== null && typeof value === "object") {
-    const result: Record<string, unknown> = {};
-    for (const [k, v] of Object.entries(value)) {
-      result[k] = encodeUndefinedForJson(v);
-    }
-    return result;
-  }
-  return value;
-}
-
-function decodeUndefinedFromJson<T>(value: T): T | undefined {
-  if (
-    value !== null &&
-    typeof value === "object" &&
-    (value as Record<string, unknown>)[UNDEFINED_MARKER] === true
-  ) {
-    return undefined;
-  }
-  if (Array.isArray(value)) {
-    return value.map(decodeUndefinedFromJson) as unknown as T;
-  }
-  if (value !== null && typeof value === "object") {
-    const result: Record<string, unknown> = {};
-    for (const [k, v] of Object.entries(value)) {
-      result[k] = decodeUndefinedFromJson(v);
-    }
-    return result as unknown as T;
-  }
-  return value;
-}
 
 export interface MockServerConfig {
   /** Port to run server on */
@@ -204,7 +163,7 @@ export class MockHttpServer {
             const [outUri, outPayload] = output;
             writeEntries.push({
               uri: outUri as string,
-              data: decodeUndefinedFromJson(outPayload),
+              data: outPayload,
             });
           }
         }
@@ -213,7 +172,7 @@ export class MockHttpServer {
         // Direct write — store payload at the message URI
         await this.store.write([{
           uri: msgUri as string,
-          data: decodeUndefinedFromJson(msgPayload),
+          data: msgPayload,
         }]);
       }
 
@@ -237,12 +196,10 @@ export class MockHttpServer {
         { status: 400 },
       );
     }
-    const outputs = await this.store.read(urls as string[]);
-    // Preserve `undefined` on the wire so read misses stay distinct
-    // from stored `null` after JSON round-trip. Matches `httpApi`.
-    return Response.json(
-      outputs.map(([uri, data]) => [uri, encodeUndefinedForJson(data)]),
-    );
+    // Payloads pass through as-is; content semantics are not a
+    // transport concern. `undefined` slots collapse to JSON `null`
+    // — protocols agree on their own miss representation.
+    return Response.json(await this.store.read(urls as string[]));
   }
 }
 

@@ -8,7 +8,7 @@ system.
 > one `[inputUrl, payload]` slot per request. The payload shape depends on the
 > requested `fn`:
 >
-> - `fn=read` → `T | undefined` (undefined = not found)
+> - `fn=read` → the stored value (or whatever the protocol returns for a miss)
 > - `fn=ls&format=full` → `Output<T>[]` (entries under the prefix)
 > - `fn=ls&format=uris` → `string[]` (flat list of entry uris)
 > - `fn=count` → `number`

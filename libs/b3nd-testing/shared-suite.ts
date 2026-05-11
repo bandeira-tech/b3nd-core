@@ -99,16 +99,18 @@ export function runSharedSuite(
   });
 
   Deno.test({
-    name: `${suiteName} - read non-existent yields undefined payload`,
+    name: `${suiteName} - read non-existent yields nullish payload`,
     ...noSanitize,
     fn: async () => {
       const client = await Promise.resolve(factories.happy());
 
       const readResults = await client.read(["store://users/nobody/profile"]);
 
-      // 1:1 with input: slot present, payload undefined on miss.
+      // 1:1 with input: slot present. The framework doesn't dictate
+      // miss representation — accept undefined (in-process) or null
+      // (after JSON round-trip).
       assertEquals(readResults.length, 1);
-      assertEquals(readResults[0]?.[1], undefined);
+      assertEquals(readResults[0]?.[1] == null, true);
     },
   });
 
@@ -341,11 +343,11 @@ export function runSharedSuite(
         "store://users/partial-missing/profile",
       ]);
 
-      // 1:1 with input: 1 hit + 1 miss = 2 slots, miss has undefined payload.
+      // 1:1 with input: 1 hit + 1 miss = 2 slots, miss has nullish payload.
       assertEquals(results.length, 2);
       assertEquals(results[0]?.[0], "store://users/partial-a/profile");
       assertEquals(results[0]?.[1], { ok: true });
-      assertEquals(results[1]?.[1], undefined);
+      assertEquals(results[1]?.[1] == null, true);
     },
   });
 
@@ -391,43 +393,10 @@ export function runSharedSuite(
     },
   });
 
-  // ── Wire faithfulness: undefined / null in nested payloads ─────────
-
-  Deno.test({
-    name:
-      `${suiteName} - round-trips nested undefined/null distinctly through the wire`,
-    ...noSanitize,
-    fn: async () => {
-      const client = await Promise.resolve(factories.happy());
-
-      // Write a payload that intentionally contains both `undefined`
-      // (inside an object field) and `null` (intentional stored value).
-      // The transport layer must preserve the distinction — `undefined`
-      // means "absent" elsewhere, but here it's deliberate.
-      const original = {
-        miss: undefined,
-        deleted: null,
-        nested: { also_miss: undefined, present: 1 },
-        list: ["a", undefined, "c"],
-      };
-      const uri = `store://users/nested-${Date.now()}/data`;
-
-      const writeResult = await client.receive([msg([[uri, original]])]);
-      assertEquals(writeResult[0].accepted, true);
-
-      const [result] = await client.read<typeof original>([uri]);
-      const payload = result?.[1];
-      assertEquals(payload?.miss, undefined);
-      assertEquals(payload?.deleted, null);
-      assertEquals(payload?.nested.also_miss, undefined);
-      assertEquals(payload?.nested.present, 1);
-      assertEquals(payload?.list, ["a", undefined, "c"]);
-    },
-  });
-
-  // Binary content is not a framework or transport contract — callers
-  // who store binary opt in to a content codec (see
-  // `@bandeira-tech/b3nd-core/binary`). No shared-suite binary tests.
+  // Wire-level content preservation (undefined, binary, etc.) is not a
+  // framework or transport contract. Callers opt in to content codecs
+  // (e.g. `@bandeira-tech/b3nd-core/binary`) at their own layer if
+  // they need specific guarantees. No shared-suite content tests.
 
   // ── Overwrite ───────────────────────────────────────────────────────
 

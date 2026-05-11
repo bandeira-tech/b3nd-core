@@ -16,48 +16,6 @@ import type {
 import { routingKey } from "../b3nd-core/url.ts";
 import { openSseStream } from "./sse.ts";
 
-// JSON-wire fix: `undefined` doesn't survive JSON (collapses to `null`
-// in arrays, drops from objects). The framework's read contract is
-// "miss = undefined payload"; this pair of walkers stamps a marker on
-// undefined leaves before send and unwraps them on receive so the
-// distinction with stored `null` is preserved. Binary content is the
-// caller's concern — see `@bandeira-tech/b3nd-core/binary`.
-const UNDEFINED_MARKER = "__b3nd_undefined__";
-
-function encodeUndefinedForJson(value: unknown): unknown {
-  if (value === undefined) return { [UNDEFINED_MARKER]: true };
-  if (Array.isArray(value)) return value.map(encodeUndefinedForJson);
-  if (value !== null && typeof value === "object") {
-    const result: Record<string, unknown> = {};
-    for (const [k, v] of Object.entries(value)) {
-      result[k] = encodeUndefinedForJson(v);
-    }
-    return result;
-  }
-  return value;
-}
-
-function decodeUndefinedFromJson<T>(value: T): T | undefined {
-  if (
-    value !== null &&
-    typeof value === "object" &&
-    (value as Record<string, unknown>)[UNDEFINED_MARKER] === true
-  ) {
-    return undefined;
-  }
-  if (Array.isArray(value)) {
-    return value.map(decodeUndefinedFromJson) as unknown as T;
-  }
-  if (value !== null && typeof value === "object") {
-    const result: Record<string, unknown> = {};
-    for (const [k, v] of Object.entries(value)) {
-      result[k] = decodeUndefinedFromJson(v);
-    }
-    return result as unknown as T;
-  }
-  return value;
-}
-
 export class HttpClient implements ProtocolInterfaceNode {
   private baseUrl: string;
   private headers: Record<string, string>;
@@ -136,11 +94,7 @@ export class HttpClient implements ProtocolInterfaceNode {
     }
 
     try {
-      const serializedBatch = JSON.stringify(
-        validMsgs.map((
-          [uri, payload],
-        ) => [uri, encodeUndefinedForJson(payload)]),
-      );
+      const serializedBatch = JSON.stringify(validMsgs);
 
       const response = await this.request("/api/v1/receive", {
         method: "POST",
@@ -190,15 +144,11 @@ export class HttpClient implements ProtocolInterfaceNode {
         }`,
       );
     }
-    const body = await response.json() as Output<T>[];
-    // Unwrap `undefined` markers so the framework's `miss = undefined`
-    // semantic survives JSON. Binary in payloads is the caller's
-    // concern — opt in via `@bandeira-tech/b3nd-core/binary`.
-    for (let i = 0; i < body.length; i++) {
-      const [uri, payload] = body[i];
-      body[i] = [uri, decodeUndefinedFromJson(payload) as T];
-    }
-    return body;
+    // Payloads pass through as JSON-parsed values. Content semantics
+    // (miss representation, binary encoding, etc.) are the caller's
+    // concern — opt in via content codecs like
+    // `@bandeira-tech/b3nd-core/binary` if you need them.
+    return await response.json() as Output<T>[];
   }
 
   async *observe(

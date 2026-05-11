@@ -10,8 +10,9 @@ The framework is small — four primitives — and one shape:
 > `Output[]`, `read` returns `Output[]`, `observe` yields `Output<string[]>`.
 > There is no separate result envelope, no `success`/`error` discriminator at
 > the framework level. Failures are either thrown (transport / programmer
-> errors) or absent (option-A "not found"). Domain-level errors live inside the
-> payload by protocol convention.
+> errors) or expressed inside the payload by protocol convention. The framework
+> doesn't interpret payload values — including "miss," "null," or any other
+> content shape.
 
 The read path carries function dispatch (`fn=read|ls|count|x-…`) and standard
 parameters (`limit`, `page`, `format`, …) inside the url. This doc pins what the
@@ -90,24 +91,31 @@ read<T>(urls: string[]): Promise<Output<T>[]>
 - **Input**: an ordered batch of url strings.
 - **Output**: an `Output[]` **1:1 with input** — `[inputUrl, payload]` tuples in
   input order. One slot per request; the first element is the caller's url
-  (echoed back), the second is the payload shaped per `fn`.
-- **"Not found" surfaces as `payload === undefined`** on the matching slot, not
-  as a missing slot. For `fn=ls`, an empty prefix has an empty inner `Output[]`
-  payload, not a missing outer slot.
+  (echoed back), the second is the payload your store/protocol returns.
+- **Payload semantics are content/protocol concerns.** The framework does not
+  define what "not found" looks like, what `null` means, or how binary is
+  encoded. Your store picks conventions and documents them.
 - **Throw on transport / programmer errors.** Network down, malformed url,
   unknown reserved fn, unsupported parameters, no route accepts — all throw. The
   rig propagates these as a single batch failure.
 - **Empty input** is valid — return `[]`.
 
-### Result shape per `fn`
+### Common shape conventions per `fn`
 
-| `fn`               | Outer slot | Payload                                                             |
+Stores typically pick payloads along these lines, but none of it is enforced by
+the framework — your store is free to do otherwise:
+
+| `fn`               | Outer slot | Common payload                                                      |
 | ------------------ | ---------- | ------------------------------------------------------------------- |
-| `read`             | 1          | `T \| undefined` (undefined = not found)                            |
+| `read`             | 1          | the stored value, or a protocol-defined miss representation         |
 | `ls` (format=full) | 1          | `Output<T>[]` — entries under the prefix (each `[entry-uri, data]`) |
 | `ls` (format=uris) | 1          | `string[]` — flat list of entry uris                                |
 | `count`            | 1          | `number`                                                            |
 | `x-*.*`            | 1          | provider-defined                                                    |
+
+The reference `MemoryStore` returns `undefined` for `fn=read` misses when used
+in-process; over a JSON wire transport that `undefined` collapses to `null`.
+Callers and stores agree out-of-band on how to interpret either.
 
 The first element of each Output is the **input url** the caller passed. For
 `fn=ls&format=full`, the inner `Output[]` items use the **entry uri** in their
@@ -297,20 +305,21 @@ fn, regardless of advertised support). That may change.
 
 ---
 
-## 7. Failure semantics — when to throw, when to be absent
+## 7. Failure semantics — what throws and what doesn't
 
-| Situation                                          | Action                                      |
-| -------------------------------------------------- | ------------------------------------------- |
-| Transport broke (DB connection lost, network down) | **Throw** — rig propagates as batch failure |
-| Caller asked for an unsupported `fn` or param      | **Throw** — programmer error                |
-| Malformed url                                      | `parseUrl` throws; let it propagate         |
-| `fn=read` on a missing uri                         | `[inputUrl, undefined]` (1:1 slot, absent)  |
-| Empty result for a `fn=ls` over a missing prefix   | `[inputUrl, []]` (empty list, either shape) |
-| Empty result for `fn=count` over a missing prefix  | `[inputUrl, 0]`                             |
-| Domain-level "permission denied", quota, etc.      | Encode in payload by protocol convention    |
+| Situation                                          | Action                                                              |
+| -------------------------------------------------- | ------------------------------------------------------------------- |
+| Transport broke (DB connection lost, network down) | **Throw** — rig propagates as batch failure                         |
+| Caller asked for an unsupported `fn` or param      | **Throw** — programmer error                                        |
+| Malformed url                                      | `parseUrl` throws; let it propagate                                 |
+| `fn=read` on a missing uri                         | Pick a payload (e.g. `undefined`, `null`, a sentinel) — document it |
+| Empty result for a `fn=ls` over a missing prefix   | Empty list (`[]` or `Output<T>[]` per shape)                        |
+| Empty result for `fn=count` over a missing prefix  | `0` (or whatever the protocol picks)                                |
+| Domain-level "permission denied", quota, etc.      | Encode in payload by protocol convention                            |
 
 Rule of thumb: **the framework knows two things — Output or throw**. Anything
-richer lives in your payload.
+richer — miss representation, error encoding, content shape — lives in your
+payload by your protocol's convention.
 
 ---
 
@@ -410,10 +419,11 @@ The rig will:
 The rig will **not**:
 
 - Validate `fn` against advertised `fns` — that's your job.
-- Fall through to the next connection on absence — composing fall-through is an
+- Fall through to the next connection on miss — composing fall-through is an
   aggregating client's job (see `flood()`).
 - Aggregate results across connections (sum counts, dedup ls items, …) — same.
 - Retry, timeout, or rate-limit at the rig level — wrap your client.
+- Interpret payload contents (miss representation, binary encoding, etc.).
 
 ---
 

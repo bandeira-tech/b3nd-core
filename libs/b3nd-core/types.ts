@@ -51,23 +51,24 @@ export interface StatusResult {
 /**
  * Output — the universal addressed-content primitive: [uri, payload]
  *
- * Same tuple shape on both sides of the framework, but the meaning of
- * the first element depends on direction:
+ * The framework treats `payload` as opaque on both sides. The first
+ * element's meaning differs by direction:
  *
  * - **write** (`receive`, `send`, programs): `uri` is the destination
  *   address the payload is written under.
- * - **read** (`read` results): `uri` is the **input url** the caller
- *   passed — the result echoes it back so callers can pair input to
- *   output positionally or by lookup. The payload's shape depends on
- *   the requested `fn`:
- *     - `fn=read`           → `T | undefined` (undefined = not found)
+ * - **read** (`read` results): `uri` echoes the caller's input url so
+ *   results pair positionally or by lookup. Payload shape depends on
+ *   what the executing client / protocol decides — common patterns:
+ *     - `fn=read`           → the stored value, or a protocol-defined
+ *                              miss representation
  *     - `fn=ls&format=full` → `Output[]` of the entries under the prefix
  *     - `fn=ls&format=uris` → `string[]` — flat list of entry uris
  *     - `fn=count`          → `number`
  *     - `fn=x-…`            → provider-defined
  *
- * A payload of `null` is the wire-level "delete this URI" convention
- * (only meaningful on the write side).
+ * The framework does not dictate what a "miss" payload looks like, nor
+ * what `null` means. Those are content/protocol concerns. Pick a
+ * convention with your store/canon and document it there.
  */
 export type Output<T = unknown> = [
   uri: string,
@@ -84,12 +85,13 @@ export type Message<D = unknown> = Output<D>;
  *
  * Single-url convenience used by program authors — wraps
  * `read([url])[0]`. Because `read` is 1:1 with its input, the tuple is
- * always present; the payload is `undefined` when the read produced
- * no value (i.e. "not found" under option-A absence semantics).
+ * always present. What "miss" looks like in the payload is up to the
+ * underlying protocol; the type parameter `T` should reflect that
+ * (e.g. `T | undefined` if your protocol uses `undefined` for miss).
  */
 export type ReadFn = <T = unknown>(
   url: string,
-) => Promise<Output<T | undefined>>;
+) => Promise<Output<T>>;
 
 /**
  * Receive function — batch of messages through the rig pipeline.
@@ -193,22 +195,18 @@ export interface ProtocolInterfaceNode {
    * **Shape: 1:1 with input.** Returns one `Output<T>` per input url,
    * in input order. Each output is `[inputUrl, payload]` — the first
    * element echoes the caller's url so results are addressable
-   * positionally or by lookup. The payload's type depends on the
-   * requested `fn`:
-   *  - `fn=read`           → `T | undefined` (undefined = not found)
-   *  - `fn=ls&format=full` → `Output<T>[]` of the entries under the
-   *                          prefix (each `[entry-uri, data]`)
-   *  - `fn=ls&format=uris` → `string[]` — flat list of entry uris
-   *  - `fn=count`          → `number`
-   *  - `fn=x-…`            → provider-defined
+   * positionally or by lookup.
    *
-   * **Errors** (option A):
+   * Payload semantics are **content/protocol concerns** — the framework
+   * does not interpret them. The executing client decides what `read`
+   * misses, `ls` shapes, `count` answers, and `x-*` results look like;
+   * callers and stores agree on the convention out-of-band.
+   *
+   * **Errors:**
    *  - Transport / programmer errors throw (network down, malformed
    *    url, unknown `fn`, no route accepts).
-   *  - "Not found" surfaces as a payload of `undefined` on the
-   *    matching slot (or an empty inner array for `fn=ls`).
-   *  - Domain-level errors (auth, etc.) are protocol-encoded in the
-   *    payload — the framework does not interpret them.
+   *  - Anything else — including "not found", auth refusals, etc. —
+   *    is encoded in the payload per the protocol's own convention.
    *
    * @example
    * ```ts
@@ -217,9 +215,9 @@ export interface ProtocolInterfaceNode {
    *   "mutable://users/alice/posts/?fn=count",
    *   "mutable://users/alice/posts/?format=uris&limit=12",
    * ]);
-   * profile[1]; // { name: "Alice" } | undefined
-   * total[1];   // 4127
-   * posts[1];   // ["mutable://users/alice/posts/p1", ...]
+   * profile[1]; // whatever the store returns for a point read
+   * total[1];   // whatever the store returns for fn=count
+   * posts[1];   // whatever the store returns for fn=ls&format=uris
    * ```
    */
   read<T = unknown>(urls: string[]): Promise<Output<T>[]>;
