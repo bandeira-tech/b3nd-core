@@ -42,16 +42,15 @@ type Storage = Map<string, StorageNode>;
 function resolveTarget(
   uri: string,
   storage: Storage,
-): { program: string; path: string; node: StorageNode; parts: string[] } {
+): {
+  program: string;
+  path: string;
+  node: StorageNode | undefined;
+  parts: string[];
+} {
   const url = URL.parse(uri)!;
   const program = `${url.protocol}//${url.hostname}`;
-
-  let node = storage.get(program);
-  if (!node) {
-    node = { children: new Map() };
-    storage.set(program, node);
-  }
-
+  const node = storage.get(program);
   const parts = url.pathname.substring(1).split("/");
   return { program, path: url.pathname, node, parts };
 }
@@ -89,9 +88,14 @@ export class MemoryStore implements Store {
     uri: string,
     record: { data: unknown },
   ): void {
-    const { node, parts } = resolveTarget(uri, this.storage);
+    const { program, parts, node: existing } = resolveTarget(uri, this.storage);
 
-    let current = node;
+    let current = existing;
+    if (!current) {
+      current = { children: new Map() };
+      this.storage.set(program, current);
+    }
+
     for (const segment of parts.filter(Boolean)) {
       if (!current.children) current.children = new Map();
       if (!current.children.get(segment)) {
@@ -137,6 +141,7 @@ export class MemoryStore implements Store {
 
   private _readOne<T>(uri: string): Output<T> | undefined {
     const { parts, node } = resolveTarget(uri, this.storage);
+    if (!node) return undefined;
 
     let current: StorageNode | undefined = node;
     for (const part of parts.filter(Boolean)) {
@@ -155,6 +160,7 @@ export class MemoryStore implements Store {
    */
   private _walk(uri: string): Output[] {
     const { node, parts, program, path } = resolveTarget(uri, this.storage);
+    if (!node) return [];
     let current: StorageNode | undefined = node;
 
     for (const part of parts.filter(Boolean)) {
@@ -257,6 +263,7 @@ export class MemoryStore implements Store {
 
   private _deleteOne(uri: string): void {
     const { node, parts } = resolveTarget(uri, this.storage);
+    if (!node) return;
     const filteredParts = parts.filter(Boolean);
 
     let current: StorageNode | undefined = node;
