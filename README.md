@@ -237,7 +237,7 @@ const stop = network(localRig, [
 
 | Library               | Description                                                               |
 | --------------------- | ------------------------------------------------------------------------- |
-| `b3nd-core`           | Types, url grammar, encoding, binary, client base classes, ObserveEmitter |
+| `b3nd-core`           | Types, url grammar, encoding primitives, client base classes, ObserveEmitter |
 | `b3nd-rig`            | Rig, Identity, connections, hooks, events, reactions, HTTP API, factories |
 | `b3nd-network`        | `network()`, `peer()`, flood, path-vector, tell-and-read policies         |
 | `b3nd-client-memory`  | In-memory Store (no external dependencies)                                |
@@ -258,8 +258,8 @@ HTTP runtime (Deno, Hono, Express, Cloudflare Workers, …).
 import { ... } from "@bandeira-tech/b3nd-core";              // everything
 import type { ... } from "@bandeira-tech/b3nd-core/types";    // types only
 import { ... } from "@bandeira-tech/b3nd-core/url";           // url grammar + helpers
-import { ... } from "@bandeira-tech/b3nd-core/encoding";      // hex encoding
-import { ... } from "@bandeira-tech/b3nd-core/binary";        // binary encoding
+import { ... } from "@bandeira-tech/b3nd-core/encoding";      // base64 / hex primitives
+import { ... } from "@bandeira-tech/b3nd-core/binary";        // opt-in binary content codec (not framework)
 import { ... } from "@bandeira-tech/b3nd-core/network";       // network primitives
 import { ... } from "@bandeira-tech/b3nd-core/client-console"; // console client
 ```

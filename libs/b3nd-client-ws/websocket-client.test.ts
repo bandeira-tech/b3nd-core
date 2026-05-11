@@ -13,7 +13,21 @@ import {
   type TestClientFactories,
 } from "../b3nd-testing/shared-suite.ts";
 import { MemoryStore } from "../b3nd-client-memory/store.ts";
-import { encodeBinaryForJson } from "../b3nd-binary/mod.ts";
+// Server-side undefined preservation — mirrors the real WS server.
+const UNDEFINED_MARKER = "__b3nd_undefined__";
+
+function encodeUndefinedForJson(value: unknown): unknown {
+  if (value === undefined) return { [UNDEFINED_MARKER]: true };
+  if (Array.isArray(value)) return value.map(encodeUndefinedForJson);
+  if (value !== null && typeof value === "object") {
+    const result: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(value)) {
+      result[k] = encodeUndefinedForJson(v);
+    }
+    return result;
+  }
+  return value;
+}
 
 /**
  * Mock WebSocket class that simulates WebSocket behavior without network
@@ -123,15 +137,14 @@ class MockWebSocket {
     if (request.type === "read") {
       // Client sends { urls: string[] }; respond with `Output[]` 1:1
       // with input urls. Payload shape depends on `fn` (see
-      // `ProtocolInterfaceNode.read`). Wire-encode payloads so
-      // `Uint8Array` survives JSON and `undefined` stays distinct
-      // from a stored `null`.
+      // `ProtocolInterfaceNode.read`). Preserve `undefined` so read
+      // misses stay distinct from stored `null` on the wire.
       const urls: string[] = request.payload.urls ?? [];
       try {
         const outputs = await this.store.read(urls);
         const data = outputs.map((
           [uri, payload],
-        ) => [uri, encodeBinaryForJson(payload)]);
+        ) => [uri, encodeUndefinedForJson(payload)]);
         return { id: request.id, success: true, data };
       } catch (err) {
         return {

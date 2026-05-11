@@ -4,8 +4,10 @@
  * Acts as a wire-format adapter only — receive/read are delegated to a
  * `MemoryStore`. The mock owns:
  * - HTTP framing (routes, JSON encode/decode, status codes)
- * - The binary marker serialization that the real HTTP transport uses
- *   for `Uint8Array` payloads
+ * - The `undefined` marker preservation that JSON transports apply so
+ *   the framework's `miss = undefined payload` semantic survives the
+ *   wire. Binary content is the caller's concern (see
+ *   `@bandeira-tech/b3nd-core/binary`); the mock doesn't touch it.
  *
  * It does not re-implement read/ls/count semantics or answer-address
  * conventions — that's MemoryStore's job.
@@ -16,11 +18,43 @@
  * - `validationError`     — receive always rejects with a fixed error
  */
 
-import {
-  decodeBinaryFromJson,
-  encodeBinaryForJson,
-} from "../b3nd-binary/mod.ts";
 import { MemoryStore } from "../b3nd-client-memory/store.ts";
+
+const UNDEFINED_MARKER = "__b3nd_undefined__";
+
+function encodeUndefinedForJson(value: unknown): unknown {
+  if (value === undefined) return { [UNDEFINED_MARKER]: true };
+  if (Array.isArray(value)) return value.map(encodeUndefinedForJson);
+  if (value !== null && typeof value === "object") {
+    const result: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(value)) {
+      result[k] = encodeUndefinedForJson(v);
+    }
+    return result;
+  }
+  return value;
+}
+
+function decodeUndefinedFromJson<T>(value: T): T | undefined {
+  if (
+    value !== null &&
+    typeof value === "object" &&
+    (value as Record<string, unknown>)[UNDEFINED_MARKER] === true
+  ) {
+    return undefined;
+  }
+  if (Array.isArray(value)) {
+    return value.map(decodeUndefinedFromJson) as unknown as T;
+  }
+  if (value !== null && typeof value === "object") {
+    const result: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(value)) {
+      result[k] = decodeUndefinedFromJson(v);
+    }
+    return result as unknown as T;
+  }
+  return value;
+}
 
 export interface MockServerConfig {
   /** Port to run server on */
@@ -170,7 +204,7 @@ export class MockHttpServer {
             const [outUri, outPayload] = output;
             writeEntries.push({
               uri: outUri as string,
-              data: decodeBinaryFromJson(outPayload),
+              data: decodeUndefinedFromJson(outPayload),
             });
           }
         }
@@ -179,7 +213,7 @@ export class MockHttpServer {
         // Direct write — store payload at the message URI
         await this.store.write([{
           uri: msgUri as string,
-          data: decodeBinaryFromJson(msgPayload),
+          data: decodeUndefinedFromJson(msgPayload),
         }]);
       }
 
@@ -204,11 +238,10 @@ export class MockHttpServer {
       );
     }
     const outputs = await this.store.read(urls as string[]);
-    // Server-side wire encoding: walks the payload to encode binary
-    // values as base64 markers and `undefined` as a sentinel so it
-    // survives JSON. Matches the real `httpApi` server.
+    // Preserve `undefined` on the wire so read misses stay distinct
+    // from stored `null` after JSON round-trip. Matches `httpApi`.
     return Response.json(
-      outputs.map(([uri, data]) => [uri, encodeBinaryForJson(data)]),
+      outputs.map(([uri, data]) => [uri, encodeUndefinedForJson(data)]),
     );
   }
 }

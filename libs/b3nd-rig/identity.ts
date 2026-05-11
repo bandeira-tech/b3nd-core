@@ -20,7 +20,7 @@ import {
   sign as edSign,
   verify as edVerify,
 } from "../b3nd-encrypt/mod.ts";
-import { decodeHex, encodeHex } from "../b3nd-binary/mod.ts";
+import { decodeHex, encodeHex } from "../b3nd-core/encoding.ts";
 
 /**
  * Portable identity data — JSON-serializable for persistence.

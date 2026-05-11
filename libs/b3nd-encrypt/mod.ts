@@ -3,7 +3,7 @@ import {
   decodeHex,
   encodeBase64,
   encodeHex,
-} from "../b3nd-binary/mod.ts";
+} from "../b3nd-core/encoding.ts";
 import _canonicalize from "canonicalize";
 // CJS/ESM interop: cast to callable
 const canonicalize = _canonicalize as unknown as (

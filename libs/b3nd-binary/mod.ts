@@ -1,100 +1,46 @@
 /**
  * @module
- * Binary — the single home for byte-level encoding in b3nd.
+ * Binary — content codec for carrying `Uint8Array` / `ArrayBuffer`
+ * through JSON wire transports.
  *
- * **Everything that touches binary or wire-encodes JSON-hostile values
- * should go through this module.** Transports (HTTP, WS) and stores
- * must not roll their own marker shapes — they import from here.
+ * **Not a framework feature.** The b3nd framework is content-opaque:
+ * `Output<T> = [uri, payload]` says nothing about what `payload`
+ * holds. This lib is one possible content codec a protocol/canon can
+ * opt into when its payloads include binary fields that need to
+ * survive JSON.
  *
- * Three layers, kept separate:
+ * Use pattern (caller's layer, not framework or transport):
  *
- * 1. **Primitives** — pure `bytes ↔ string` conversions.
- *    `encodeBase64` / `decodeBase64`, `encodeHex` / `decodeHex`.
- *    No JSON, no markers, no recursion.
+ * ```ts
+ * import {
+ *   decodeBinaryFromJson,
+ *   encodeBinaryForJson,
+ * } from "@bandeira-tech/b3nd-core/binary";
  *
- * 2. **JSON-hostile-value markers** — the on-the-wire envelope shapes
- *    used to round-trip values JSON can't carry natively:
- *      - `Uint8Array` / `ArrayBuffer` → `{__b3nd_binary__: true, data: <base64>}`
- *      - `undefined`                  → `{__b3nd_undefined__: true}`
- *    Plus the predicates: `isBinary`, `isEncodedBinary`.
+ * await client.receive([
+ *   [uri, encodeBinaryForJson({ avatar: bytes, name: "alice" })],
+ * ]);
  *
- * 3. **Recursive wire encode/decode** — `encodeForJson` walks any
- *    value, swapping JSON-hostile leaves for their marker forms;
- *    `decodeFromJson` is the inverse.
+ * const [r] = await client.read([uri]);
+ * const profile = decodeBinaryFromJson(r[1]);
+ * ```
  *
- * The lib is semantics-free: it never interprets *why* an `undefined`
- * is there or what a stored `null` means. That's the caller's
- * concern. The lib just preserves shapes faithfully.
+ * Wire shape:
+ *   `Uint8Array` / `ArrayBuffer` → `{__b3nd_binary__: true, data: <base64>}`
+ *
+ * The lib never inspects or transforms anything else (no `undefined`
+ * handling, no null reinterpretation). Other JSON wire concerns —
+ * preserving `undefined`, etc. — live in their respective transports.
  */
 
-// ── 1. Primitives ─────────────────────────────────────────────────────
-
-/** Encode bytes to lowercase hex. */
-export function encodeHex(bytes: Uint8Array): string {
-  return Array.from(bytes).map((b) => b.toString(16).padStart(2, "0")).join("");
-}
-
-/** Decode hex (any case) to bytes. Throws on odd-length input. */
-export function decodeHex(hex: string): Uint8Array<ArrayBuffer> {
-  if (hex.length % 2 !== 0) {
-    throw new Error("Invalid hex input");
-  }
-  const buffer = new ArrayBuffer(hex.length / 2);
-  const bytes = new Uint8Array(buffer);
-  for (let i = 0; i < hex.length; i += 2) {
-    bytes[i / 2] = parseInt(hex.slice(i, i + 2), 16);
-  }
-  return bytes;
-}
-
-/** Encode bytes to base64 (Node Buffer-backed when available, btoa otherwise). */
-export function encodeBase64(bytes: Uint8Array): string {
-  const buf = nodeBuffer();
-  if (buf) return buf.from(bytes).toString("base64");
-  let binary = "";
-  bytes.forEach((b) => (binary += String.fromCharCode(b)));
-  return btoa(binary);
-}
-
-/** Decode base64 to bytes. */
-export function decodeBase64(b64: string): Uint8Array {
-  const buf = nodeBuffer();
-  if (buf) return new Uint8Array(buf.from(b64, "base64"));
-  const binary = atob(b64);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i++) {
-    bytes[i] = binary.charCodeAt(i);
-  }
-  return bytes;
-}
-
-interface NodeBuffer {
-  from: (
-    input: Uint8Array | string,
-    encoding?: string,
-  ) => { toString: (encoding: string) => string } & Uint8Array;
-}
-
-function nodeBuffer(): NodeBuffer | undefined {
-  return (typeof globalThis !== "undefined" &&
-    (globalThis as { Buffer?: NodeBuffer }).Buffer) || undefined;
-}
-
-// ── 2. Markers ────────────────────────────────────────────────────────
+import { decodeBase64, encodeBase64 } from "../b3nd-core/encoding.ts";
 
 const BINARY_MARKER = "__b3nd_binary__";
-const UNDEFINED_MARKER = "__b3nd_undefined__";
 
-/**
- * Wire shape carrying a `Uint8Array` through JSON.
- */
+/** Wire shape carrying a `Uint8Array` through JSON. */
 export interface EncodedBinary {
   [BINARY_MARKER]: true;
   data: string; // base64
-}
-
-interface EncodedUndefined {
-  [UNDEFINED_MARKER]: true;
 }
 
 /** True iff `value` is a `Uint8Array` or `ArrayBuffer`. */
@@ -112,35 +58,14 @@ export function isEncodedBinary(value: unknown): value is EncodedBinary {
   );
 }
 
-function isEncodedUndefined(value: unknown): value is EncodedUndefined {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    UNDEFINED_MARKER in value &&
-    (value as EncodedUndefined)[UNDEFINED_MARKER] === true
-  );
-}
-
-// ── 3. Recursive wire encode / decode ─────────────────────────────────
-
 /**
- * Encode a value for JSON wire transport. Recursively walks arrays
- * and objects to:
- *   - encode `Uint8Array` / `ArrayBuffer` as base64 binary markers
- *   - encode `undefined` as an undefined marker so it survives JSON
- *     (where it would otherwise collapse to `null` in arrays or get
- *     dropped from objects)
- *
- * Any other value is returned as-is; non-binary scalars and `null`
- * pass through unchanged.
+ * Walk a value and replace every `Uint8Array` / `ArrayBuffer` leaf
+ * with a base64 binary marker. Non-binary leaves (including `null`
+ * and `undefined`) pass through unchanged.
  */
 export function encodeBinaryForJson(value: unknown): unknown {
-  if (value === undefined) return { [UNDEFINED_MARKER]: true };
   if (value instanceof Uint8Array) {
-    return {
-      [BINARY_MARKER]: true,
-      data: encodeBase64(value),
-    };
+    return { [BINARY_MARKER]: true, data: encodeBase64(value) };
   }
   if (value instanceof ArrayBuffer) {
     return {
@@ -148,9 +73,7 @@ export function encodeBinaryForJson(value: unknown): unknown {
       data: encodeBase64(new Uint8Array(value)),
     };
   }
-  if (Array.isArray(value)) {
-    return value.map(encodeBinaryForJson);
-  }
+  if (Array.isArray(value)) return value.map(encodeBinaryForJson);
   if (value !== null && typeof value === "object") {
     const result: Record<string, unknown> = {};
     for (const [key, val] of Object.entries(value)) {
@@ -162,13 +85,10 @@ export function encodeBinaryForJson(value: unknown): unknown {
 }
 
 /**
- * Inverse of `encodeBinaryForJson`. Recursively walks arrays and
- * objects to:
- *   - decode binary markers back to `Uint8Array`
- *   - decode undefined markers back to `undefined`
+ * Walk a value and replace every binary-marker leaf with the original
+ * `Uint8Array`. Non-marker leaves pass through unchanged.
  */
-export function decodeBinaryFromJson<T>(value: T): T | Uint8Array | undefined {
-  if (isEncodedUndefined(value)) return undefined;
+export function decodeBinaryFromJson<T>(value: T): T | Uint8Array {
   if (isEncodedBinary(value)) return decodeBase64(value.data);
   if (Array.isArray(value)) {
     return value.map(decodeBinaryFromJson) as unknown as T;

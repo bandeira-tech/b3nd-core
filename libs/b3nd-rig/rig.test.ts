@@ -278,7 +278,7 @@ Deno.test("Identity.fromPem - creates identity from PEM and pubkey", async () =>
   const { exportPrivateKeyPem } = await import(
     "../b3nd-encrypt/mod.ts"
   );
-  const { decodeHex } = await import("../b3nd-binary/mod.ts");
+  const { decodeHex } = await import("../b3nd-core/encoding.ts");
 
   // Reconstruct the CryptoKey from exported hex, then export to PEM
   const signingKey = await crypto.subtle.importKey(
@@ -301,7 +301,7 @@ Deno.test("Identity.fromPem - sign/verify round-trips with original", async () =
   const exported = await original.export();
 
   const { exportPrivateKeyPem } = await import("../b3nd-encrypt/mod.ts");
-  const { decodeHex } = await import("../b3nd-binary/mod.ts");
+  const { decodeHex } = await import("../b3nd-core/encoding.ts");
 
   const signingKey = await crypto.subtle.importKey(
     "pkcs8",
@@ -326,7 +326,7 @@ Deno.test("Identity.fromPem - with encryption keys enables decrypt", async () =>
   const exported = await original.export();
 
   const { exportPrivateKeyPem } = await import("../b3nd-encrypt/mod.ts");
-  const { decodeHex } = await import("../b3nd-binary/mod.ts");
+  const { decodeHex } = await import("../b3nd-core/encoding.ts");
 
   const signingKey = await crypto.subtle.importKey(
     "pkcs8",
@@ -360,7 +360,7 @@ Deno.test("Identity.fromPem - derives encryption pubkey from private when not pr
   const exported = await original.export();
 
   const { exportPrivateKeyPem } = await import("../b3nd-encrypt/mod.ts");
-  const { decodeHex } = await import("../b3nd-binary/mod.ts");
+  const { decodeHex } = await import("../b3nd-core/encoding.ts");
 
   const signingKey = await crypto.subtle.importKey(
     "pkcs8",
@@ -404,7 +404,7 @@ Deno.test("Identity.canEncrypt - false for PEM without encryption keys", async (
   const exported = await original.export();
 
   const { exportPrivateKeyPem } = await import("../b3nd-encrypt/mod.ts");
-  const { decodeHex } = await import("../b3nd-binary/mod.ts");
+  const { decodeHex } = await import("../b3nd-core/encoding.ts");
 
   const signingKey = await crypto.subtle.importKey(
     "pkcs8",
