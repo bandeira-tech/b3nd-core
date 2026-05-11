@@ -1,18 +1,12 @@
 /**
  * Types & Errors Test Suite
  *
- * Tests for ErrorCode, Errors factory, ClientError, and binary utilities
- * from b3nd-core types and binary modules.
+ * Tests for ErrorCode, Errors factory, ClientError. Binary lib has its
+ * own test file at libs/b3nd-binary/mod.test.ts.
  */
 
 import { assertEquals, assertInstanceOf } from "@std/assert";
 import { ClientError, ErrorCode, Errors } from "./types.ts";
-import {
-  decodeBinaryFromJson,
-  encodeBinaryForJson,
-  isBinary,
-  isEncodedBinary,
-} from "./binary.ts";
 
 // ============================================================================
 // ErrorCode enum
@@ -137,98 +131,4 @@ Deno.test("ClientError - details is optional", () => {
 Deno.test("ClientError - has a stack trace", () => {
   const err = new ClientError("test", "TEST");
   assertEquals(typeof err.stack, "string");
-});
-
-// ============================================================================
-// Binary utilities (from binary.ts, exported via mod.ts)
-// ============================================================================
-
-Deno.test("isBinary - Uint8Array is binary", () => {
-  assertEquals(isBinary(new Uint8Array([1, 2, 3])), true);
-});
-
-Deno.test("isBinary - ArrayBuffer is binary", () => {
-  assertEquals(isBinary(new ArrayBuffer(8)), true);
-});
-
-Deno.test("isBinary - plain object is not binary", () => {
-  assertEquals(isBinary({ data: "hello" }), false);
-});
-
-Deno.test("isBinary - string is not binary", () => {
-  assertEquals(isBinary("hello"), false);
-});
-
-Deno.test("isBinary - null is not binary", () => {
-  assertEquals(isBinary(null), false);
-});
-
-Deno.test("isEncodedBinary - recognizes encoded binary objects", () => {
-  const encoded = encodeBinaryForJson(new Uint8Array([1, 2, 3]));
-  assertEquals(isEncodedBinary(encoded), true);
-});
-
-Deno.test("isEncodedBinary - rejects plain objects", () => {
-  assertEquals(isEncodedBinary({ data: "hello" }), false);
-  assertEquals(isEncodedBinary(null), false);
-  assertEquals(isEncodedBinary("string"), false);
-});
-
-Deno.test("encodeBinaryForJson - returns original for non-binary values", () => {
-  assertEquals(encodeBinaryForJson("hello"), "hello");
-  assertEquals(encodeBinaryForJson(42), 42);
-  assertEquals(encodeBinaryForJson({ key: "val" }), { key: "val" });
-  assertEquals(encodeBinaryForJson(null), null);
-});
-
-Deno.test("encodeBinaryForJson - encodes Uint8Array", () => {
-  const encoded = encodeBinaryForJson(new Uint8Array([0xca, 0xfe]));
-  assertEquals(isEncodedBinary(encoded), true);
-  assertEquals(typeof (encoded as { data: string }).data, "string");
-});
-
-Deno.test("encodeBinaryForJson - encodes ArrayBuffer", () => {
-  const buf = new Uint8Array([0xde, 0xad]).buffer;
-  const encoded = encodeBinaryForJson(buf);
-  assertEquals(isEncodedBinary(encoded), true);
-});
-
-Deno.test("decodeBinaryFromJson - returns original for non-encoded values", () => {
-  assertEquals(decodeBinaryFromJson("hello"), "hello");
-  assertEquals(decodeBinaryFromJson(42), 42);
-  assertEquals(decodeBinaryFromJson({ key: "val" }), { key: "val" });
-});
-
-Deno.test("binary round-trip - Uint8Array encode/decode", () => {
-  const original = new Uint8Array([0, 1, 127, 128, 255]);
-  const encoded = encodeBinaryForJson(original);
-  const decoded = decodeBinaryFromJson(encoded);
-  assertInstanceOf(decoded, Uint8Array);
-  assertEquals(decoded, original);
-});
-
-Deno.test("binary round-trip - empty Uint8Array", () => {
-  const original = new Uint8Array([]);
-  const encoded = encodeBinaryForJson(original);
-  const decoded = decodeBinaryFromJson(encoded);
-  assertInstanceOf(decoded, Uint8Array);
-  assertEquals((decoded as Uint8Array).length, 0);
-});
-
-Deno.test("binary round-trip - large payload (1KB)", () => {
-  const original = crypto.getRandomValues(new Uint8Array(1024));
-  const encoded = encodeBinaryForJson(original);
-  const decoded = decodeBinaryFromJson(encoded);
-  assertInstanceOf(decoded, Uint8Array);
-  assertEquals(decoded, original);
-});
-
-Deno.test("binary round-trip - serializable as JSON", () => {
-  const original = new Uint8Array([10, 20, 30]);
-  const encoded = encodeBinaryForJson(original);
-  const json = JSON.stringify(encoded);
-  const parsed = JSON.parse(json);
-  const decoded = decodeBinaryFromJson(parsed);
-  assertInstanceOf(decoded, Uint8Array);
-  assertEquals(decoded, original);
 });

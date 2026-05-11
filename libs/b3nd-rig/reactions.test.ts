@@ -2,7 +2,8 @@ import { assertEquals } from "@std/assert";
 import { matchPattern, ReactionRegistry } from "./reactions.ts";
 import type { Output, ReadFn } from "../b3nd-core/types.ts";
 
-const stubRead: ReadFn = (url) => Promise.resolve([url, undefined]);
+// deno-lint-ignore no-explicit-any
+const stubRead: ReadFn = (url) => Promise.resolve([url, undefined as any]);
 
 // ── matchPattern ──
 

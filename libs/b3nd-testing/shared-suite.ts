@@ -58,9 +58,6 @@ export interface TestClientFactories {
   validationError?: () =>
     | ProtocolInterfaceNode
     | Promise<ProtocolInterfaceNode>;
-
-  /** Whether the client supports binary (Uint8Array) data. Defaults to true. */
-  supportsBinary?: boolean;
 }
 
 /**
@@ -102,16 +99,18 @@ export function runSharedSuite(
   });
 
   Deno.test({
-    name: `${suiteName} - read non-existent yields undefined payload`,
+    name: `${suiteName} - read non-existent yields nullish payload`,
     ...noSanitize,
     fn: async () => {
       const client = await Promise.resolve(factories.happy());
 
       const readResults = await client.read(["store://users/nobody/profile"]);
 
-      // 1:1 with input: slot present, payload undefined on miss.
+      // 1:1 with input: slot present. The framework doesn't dictate
+      // miss representation — accept undefined (in-process) or null
+      // (after JSON round-trip).
       assertEquals(readResults.length, 1);
-      assertEquals(readResults[0]?.[1], undefined);
+      assertEquals(readResults[0]?.[1] == null, true);
     },
   });
 
@@ -344,11 +343,11 @@ export function runSharedSuite(
         "store://users/partial-missing/profile",
       ]);
 
-      // 1:1 with input: 1 hit + 1 miss = 2 slots, miss has undefined payload.
+      // 1:1 with input: 1 hit + 1 miss = 2 slots, miss has nullish payload.
       assertEquals(results.length, 2);
       assertEquals(results[0]?.[0], "store://users/partial-a/profile");
       assertEquals(results[0]?.[1], { ok: true });
-      assertEquals(results[1]?.[1], undefined);
+      assertEquals(results[1]?.[1] == null, true);
     },
   });
 
@@ -394,119 +393,10 @@ export function runSharedSuite(
     },
   });
 
-  // ── Binary data tests ──────────────────────────────────────────────
-
-  const supportsBinary = factories.supportsBinary !== false;
-
-  if (supportsBinary) {
-    Deno.test({
-      name: `${suiteName} - receive and read binary data`,
-      ...noSanitize,
-      fn: async () => {
-        const client = await Promise.resolve(factories.happy());
-
-        const binaryData = new Uint8Array([
-          0x89,
-          0x50,
-          0x4E,
-          0x47,
-          0x0D,
-          0x0A,
-          0x1A,
-          0x0A,
-          0x00,
-          0x00,
-          0x00,
-          0x0D,
-          0x49,
-          0x48,
-          0x44,
-          0x52,
-        ]);
-
-        const results = await client.receive([
-          msg([["store://files/test-image.png", binaryData]]),
-        ]);
-
-        assertEquals(
-          results[0].accepted,
-          true,
-          "Binary message should be accepted",
-        );
-
-        const readResults = await client.read<Uint8Array>([
-          "store://files/test-image.png",
-        ]);
-
-        assertEquals(readResults.length, 1);
-        assertEquals(
-          readResults[0]?.[1] instanceof Uint8Array,
-          true,
-          "Read data should be Uint8Array",
-        );
-
-        const readData = readResults[0]?.[1] as Uint8Array;
-        assertEquals(
-          readData.length,
-          binaryData.length,
-          "Binary data length should match",
-        );
-
-        for (let i = 0; i < binaryData.length; i++) {
-          assertEquals(
-            readData[i],
-            binaryData[i],
-            `Byte at position ${i} should match`,
-          );
-        }
-      },
-    });
-
-    Deno.test({
-      name: `${suiteName} - receive and read large binary data`,
-      ...noSanitize,
-      fn: async () => {
-        const client = await Promise.resolve(factories.happy());
-
-        const size = 1024;
-        const binaryData = new Uint8Array(size);
-        for (let i = 0; i < size; i++) {
-          binaryData[i] = i % 256;
-        }
-
-        const results = await client.receive([
-          msg([["store://files/large-file.bin", binaryData]]),
-        ]);
-
-        assertEquals(
-          results[0].accepted,
-          true,
-          "Large binary message should be accepted",
-        );
-
-        const readResults = await client.read<Uint8Array>([
-          "store://files/large-file.bin",
-        ]);
-
-        assertEquals(readResults.length, 1);
-
-        const readData = readResults[0]?.[1] as Uint8Array;
-        assertEquals(
-          readData.length,
-          binaryData.length,
-          "Large binary data length should match",
-        );
-
-        let matches = true;
-        for (let i = 0; i < binaryData.length && matches; i++) {
-          if (readData[i] !== binaryData[i]) {
-            matches = false;
-          }
-        }
-        assertEquals(matches, true, "All bytes should match");
-      },
-    });
-  }
+  // Wire-level content preservation (undefined, binary, etc.) is not a
+  // framework or transport contract. Callers opt in to content codecs
+  // (e.g. `@bandeira-tech/b3nd-core/binary`) at their own layer if
+  // they need specific guarantees. No shared-suite content tests.
 
   // ── Overwrite ───────────────────────────────────────────────────────
 

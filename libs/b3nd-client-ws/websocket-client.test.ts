@@ -13,7 +13,6 @@ import {
   type TestClientFactories,
 } from "../b3nd-testing/shared-suite.ts";
 import { MemoryStore } from "../b3nd-client-memory/store.ts";
-import { encodeBinaryForJson } from "../b3nd-core/binary.ts";
 
 /**
  * Mock WebSocket class that simulates WebSocket behavior without network
@@ -123,15 +122,10 @@ class MockWebSocket {
     if (request.type === "read") {
       // Client sends { urls: string[] }; respond with `Output[]` 1:1
       // with input urls. Payload shape depends on `fn` (see
-      // `ProtocolInterfaceNode.read`). Wire-encode payloads so
-      // `Uint8Array` survives JSON and `undefined` stays distinct
-      // from a stored `null`.
+      // `ProtocolInterfaceNode.read`). Payloads pass through as JSON.
       const urls: string[] = request.payload.urls ?? [];
       try {
-        const outputs = await this.store.read(urls);
-        const data = outputs.map((
-          [uri, payload],
-        ) => [uri, encodeBinaryForJson(payload)]);
+        const data = await this.store.read(urls);
         return { id: request.id, success: true, data };
       } catch (err) {
         return {

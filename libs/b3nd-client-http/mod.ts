@@ -13,36 +13,8 @@ import type {
   ReceiveResult,
   StatusResult,
 } from "../b3nd-core/types.ts";
-import { encodeBase64 } from "../b3nd-core/encoding.ts";
-import { decodeBinaryFromJson } from "../b3nd-core/binary.ts";
 import { routingKey } from "../b3nd-core/url.ts";
 import { openSseStream } from "./sse.ts";
-
-/**
- * Serialize message data for JSON transport.
- * Recursively wraps Uint8Array in a base64-encoded marker object to prevent
- * JSON corruption — handles binary data inside envelope outputs.
- */
-function serializeMsgData(data: unknown): unknown {
-  if (data instanceof Uint8Array) {
-    return {
-      __b3nd_binary__: true,
-      encoding: "base64",
-      data: encodeBase64(data),
-    };
-  }
-  if (Array.isArray(data)) {
-    return data.map(serializeMsgData);
-  }
-  if (data !== null && typeof data === "object") {
-    const result: Record<string, unknown> = {};
-    for (const [key, val] of Object.entries(data)) {
-      result[key] = serializeMsgData(val);
-    }
-    return result;
-  }
-  return data;
-}
 
 export class HttpClient implements ProtocolInterfaceNode {
   private baseUrl: string;
@@ -122,9 +94,7 @@ export class HttpClient implements ProtocolInterfaceNode {
     }
 
     try {
-      const serializedBatch = JSON.stringify(
-        validMsgs.map(([uri, payload]) => [uri, serializeMsgData(payload)]),
-      );
+      const serializedBatch = JSON.stringify(validMsgs);
 
       const response = await this.request("/api/v1/receive", {
         method: "POST",
@@ -174,13 +144,11 @@ export class HttpClient implements ProtocolInterfaceNode {
         }`,
       );
     }
-    const body = await response.json() as Output<T>[];
-    // Decode wire markers (binary + undefined) embedded in payloads.
-    for (let i = 0; i < body.length; i++) {
-      const [uri, payload] = body[i];
-      body[i] = [uri, decodeBinaryFromJson(payload) as T];
-    }
-    return body;
+    // Payloads pass through as JSON-parsed values. Content semantics
+    // (miss representation, binary encoding, etc.) are the caller's
+    // concern — opt in via content codecs like
+    // `@bandeira-tech/b3nd-core/binary` if you need them.
+    return await response.json() as Output<T>[];
   }
 
   async *observe(

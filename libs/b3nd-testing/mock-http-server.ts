@@ -2,13 +2,10 @@
  * Mock HTTP Server for testing HttpClient.
  *
  * Acts as a wire-format adapter only — receive/read are delegated to a
- * `MemoryStore`. The mock owns:
- * - HTTP framing (routes, JSON encode/decode, status codes)
- * - The binary marker serialization that the real HTTP transport uses
- *   for `Uint8Array` payloads
- *
- * It does not re-implement read/ls/count semantics or answer-address
- * conventions — that's MemoryStore's job.
+ * `MemoryStore`. The mock owns HTTP framing (routes, JSON encode/decode,
+ * status codes). It does not interpret payloads in any way — content
+ * semantics (miss representation, binary encoding, etc.) are the
+ * caller/protocol's concern.
  *
  * Modes:
  * - `happy`               — fully functional
@@ -16,27 +13,7 @@
  * - `validationError`     — receive always rejects with a fixed error
  */
 
-import { decodeBase64 } from "../b3nd-core/encoding.ts";
-import { encodeBinaryForJson } from "../b3nd-core/binary.ts";
 import { MemoryStore } from "../b3nd-client-memory/store.ts";
-
-/** Wire shape used to carry `Uint8Array` through JSON. */
-interface BinaryMarker {
-  __b3nd_binary__: true;
-  encoding: "base64";
-  data: string;
-}
-
-function isBinaryMarker(v: unknown): v is BinaryMarker {
-  return v != null && typeof v === "object" &&
-    (v as Record<string, unknown>).__b3nd_binary__ === true &&
-    (v as Record<string, unknown>).encoding === "base64" &&
-    typeof (v as Record<string, unknown>).data === "string";
-}
-
-function deserializeMsgData(data: unknown): unknown {
-  return isBinaryMarker(data) ? decodeBase64(data.data) : data;
-}
 
 export interface MockServerConfig {
   /** Port to run server on */
@@ -186,7 +163,7 @@ export class MockHttpServer {
             const [outUri, outPayload] = output;
             writeEntries.push({
               uri: outUri as string,
-              data: deserializeMsgData(outPayload),
+              data: outPayload,
             });
           }
         }
@@ -195,7 +172,7 @@ export class MockHttpServer {
         // Direct write — store payload at the message URI
         await this.store.write([{
           uri: msgUri as string,
-          data: deserializeMsgData(msgPayload),
+          data: msgPayload,
         }]);
       }
 
@@ -219,13 +196,10 @@ export class MockHttpServer {
         { status: 400 },
       );
     }
-    const outputs = await this.store.read(urls as string[]);
-    // Server-side wire encoding: walks the payload to encode binary
-    // values as base64 markers and `undefined` as a sentinel so it
-    // survives JSON. Matches the real `httpApi` server.
-    return Response.json(
-      outputs.map(([uri, data]) => [uri, encodeBinaryForJson(data)]),
-    );
+    // Payloads pass through as-is; content semantics are not a
+    // transport concern. `undefined` slots collapse to JSON `null`
+    // — protocols agree on their own miss representation.
+    return Response.json(await this.store.read(urls as string[]));
   }
 }
 

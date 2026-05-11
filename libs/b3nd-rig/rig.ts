@@ -646,12 +646,12 @@ export class Rig {
   }
 
   /** Internal read helper bound to the dispatch read interface. */
-  private _readFn(): <T = unknown>(
-    u: string,
-  ) => Promise<Output<T | undefined>> {
+  private _readFn(): <T = unknown>(u: string) => Promise<Output<T>> {
     return async <T = unknown>(u: string) => {
-      const results = await this._dispatch.read<T | undefined>([u]);
-      // Read is 1:1; the slot is always present, payload may be undefined.
+      const results = await this._dispatch.read<T>([u]);
+      // Read is 1:1; the slot is always present. Whatever the payload
+      // is — including a protocol-defined miss representation — is
+      // surfaced as-is.
       return results[0];
     };
   }

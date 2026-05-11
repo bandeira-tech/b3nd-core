@@ -32,8 +32,6 @@
  * ```
  */
 
-import { decodeBase64 } from "../b3nd-core/encoding.ts";
-import { encodeBinaryForJson } from "../b3nd-core/binary.ts";
 import type { Rig } from "./rig.ts";
 import type { RigEvent } from "./events.ts";
 
@@ -42,22 +40,6 @@ import type { RigEvent } from "./events.ts";
 export interface HttpApiOptions {
   /** Extra metadata merged into status responses. */
   statusMeta?: Record<string, unknown>;
-}
-
-// ── Binary deserialization ──
-
-/** Unwrap base64-encoded binary marker objects back to Uint8Array. */
-function deserializeBinary(data: unknown): unknown {
-  if (
-    data &&
-    typeof data === "object" &&
-    (data as Record<string, unknown>).__b3nd_binary__ === true &&
-    (data as Record<string, unknown>).encoding === "base64" &&
-    typeof (data as Record<string, unknown>).data === "string"
-  ) {
-    return decodeBase64((data as Record<string, unknown>).data as string);
-  }
-  return data;
 }
 
 // ── URI helpers ──
@@ -200,7 +182,7 @@ export function httpApi(
             400,
           );
         }
-        batch.push([uri, deserializeBinary(rawPayload)]);
+        batch.push([uri, rawPayload]);
       }
       // Decomposition is a protocol concern (install messageDataProgram +
       // messageDataHandler on the Rig if you want envelope semantics);
@@ -211,11 +193,10 @@ export function httpApi(
     }
 
     // ── Read (batch) ──
-    // Body: `{ urls: string[] }`. Returns flat `Output[]` =
-    // `[[uri, payload], ...]` directly — same shape as receive accepts.
-    // The executing client owns `fn`/params interpretation. Binary
-    // payloads are wrapped via `encodeBinaryForJson` and undone by the
-    // client with `decodeBinaryFromJson`.
+    // Body: `{ urls: string[] }`. Returns `Output[]` = `[[uri, payload], ...]`
+    // 1:1 with input urls. Payloads pass through as JSON — content
+    // semantics (miss representation, binary encoding, etc.) are the
+    // executing client / protocol's concern.
     if (method === "POST" && path === "/api/v1/read") {
       let body: unknown;
       try {
@@ -228,12 +209,7 @@ export function httpApi(
         return json({ error: "Expected { urls: string[] }" }, 400);
       }
       try {
-        const outputs = await rig.read(urls as string[]);
-        const encoded = outputs.map(
-          ([uri, payload]) =>
-            [uri, encodeBinaryForJson(payload)] as [string, unknown],
-        );
-        return json(encoded);
+        return json(await rig.read(urls as string[]));
       } catch (err) {
         return json(
           { error: err instanceof Error ? err.message : String(err) },

@@ -65,12 +65,16 @@ export function flood(peers: Peer[]): ProtocolInterfaceNode {
 const identityTransform = <T>(xs: T): T => xs;
 
 /**
- * Treat `undefined` (no point read) and `[]` (empty ls) as empty so we
- * keep trying peers. Everything else — including `0` from `fn=count` —
- * is a real answer.
+ * Treat both `undefined` and `null` (common miss representations
+ * across protocols), and `[]` (empty ls), as "empty — try next peer."
+ * Everything else — including `0` from `fn=count` — is a real answer.
+ *
+ * Protocols that intentionally store `null` will see those treated as
+ * misses by flood; pair a different aggregation policy with such
+ * protocols, or wrap the null in a sentinel.
  */
 function isEmptyPayload(payload: unknown): boolean {
-  if (payload === undefined) return true;
+  if (payload === undefined || payload === null) return true;
   if (Array.isArray(payload) && payload.length === 0) return true;
   return false;
 }

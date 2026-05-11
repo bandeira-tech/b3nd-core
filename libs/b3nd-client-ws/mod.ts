@@ -15,10 +15,6 @@ import type {
   WebSocketRequest,
   WebSocketResponse,
 } from "../b3nd-core/types.ts";
-import {
-  decodeBinaryFromJson,
-  encodeBinaryForJson,
-} from "../b3nd-core/binary.ts";
 
 export class WebSocketClient implements ProtocolInterfaceNode {
   private config: WebSocketClientConfig;
@@ -285,12 +281,9 @@ export class WebSocketClient implements ProtocolInterfaceNode {
    */
   async receive(msgs: Message[]): Promise<ReceiveResult[]> {
     try {
-      const encodedMsgs = msgs.map((
-        [uri, payload],
-      ) => [uri, encodeBinaryForJson(payload)]);
       const results = await this.sendRequest<ReceiveResult[]>(
         "receive",
-        encodedMsgs,
+        msgs,
       );
       return results;
     } catch (error) {
@@ -306,11 +299,11 @@ export class WebSocketClient implements ProtocolInterfaceNode {
   async read<T = unknown>(urls: string[]): Promise<Output<T>[]> {
     if (urls.length === 0) return [];
     const outputs = await this.sendRequest<Output<T>[]>("read", { urls });
-    const items = Array.isArray(outputs) ? outputs : [outputs];
-    // Decode wire markers (binary + undefined) embedded in payloads.
-    return items.map(([uri, payload]) =>
-      [uri, decodeBinaryFromJson(payload) as T] as Output<T>
-    );
+    // Payloads pass through as JSON-parsed values. Content semantics
+    // (miss representation, binary encoding, etc.) are the caller's
+    // concern — opt in via content codecs like
+    // `@bandeira-tech/b3nd-core/binary` if you need them.
+    return Array.isArray(outputs) ? outputs : [outputs];
   }
 
   async *observe(
