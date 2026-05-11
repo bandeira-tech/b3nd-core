@@ -12,14 +12,14 @@ import {
   runSharedSuite,
   type TestClientFactories,
 } from "../b3nd-testing/shared-suite.ts";
-import { countUri, parseUrl } from "../b3nd-core/url.ts";
+import { MemoryStore } from "../b3nd-client-memory/store.ts";
 
 /**
  * Mock WebSocket class that simulates WebSocket behavior without network
  */
 class MockWebSocket {
   private listeners: Map<string, Set<(event: any) => void>> = new Map();
-  private storage: Map<string, any> = new Map();
+  protected store: MemoryStore = new MemoryStore();
   private timers: Set<number> = new Set();
   readyState: number;
   static readonly CONNECTING = 0;
@@ -57,10 +57,10 @@ class MockWebSocket {
 
   send(data: string) {
     // Simulate server response
-    const timer = setTimeout(() => {
+    const timer = setTimeout(async () => {
       try {
         const request = JSON.parse(data);
-        const response = this.generateResponse(request);
+        const response = await this.generateResponse(request);
         this.dispatchEvent({
           type: "message",
           data: JSON.stringify(response),
@@ -86,114 +86,73 @@ class MockWebSocket {
     this.dispatchEvent({ type: "close", code, reason });
   }
 
-  protected generateResponse(request: any): any {
-    const responses = {
-      receive: () => {
-        // Handle receive batch: payload is [[uri, payload], ...]
-        const batch = request.payload as [string, unknown][];
-        const results: { accepted: boolean; error?: string }[] = [];
+  protected async generateResponse(request: any): Promise<any> {
+    if (request.type === "receive") {
+      // Handle receive batch: payload is [[uri, payload], ...]
+      const batch = request.payload as [string, unknown][];
+      const results: { accepted: boolean; error?: string }[] = [];
 
-        for (const [uri, msgPayload] of batch) {
-          const envelope = msgPayload as
-            | { inputs?: unknown; outputs?: unknown }
-            | null;
-          const isEnvelope = envelope != null &&
-            typeof envelope === "object" &&
-            Array.isArray(envelope.inputs) &&
-            Array.isArray(envelope.outputs);
+      for (const [uri, msgPayload] of batch) {
+        const envelope = msgPayload as
+          | { inputs?: unknown; outputs?: unknown }
+          | null;
+        const isEnvelope = envelope != null &&
+          typeof envelope === "object" &&
+          Array.isArray(envelope.inputs) &&
+          Array.isArray(envelope.outputs);
 
-          if (isEnvelope) {
-            for (const inputUri of envelope!.inputs as string[]) {
-              this.storage.delete(inputUri);
-            }
-            for (
-              const [outUri, outPayload] of envelope!.outputs as [
-                string,
-                unknown,
-              ][]
-            ) {
-              this.storage.set(outUri, { data: outPayload });
-            }
-          } else {
-            this.storage.set(uri, { data: msgPayload });
-          }
+        if (isEnvelope) {
+          const inputs = envelope!.inputs as string[];
+          if (inputs.length > 0) await this.store.delete(inputs);
 
-          results.push({ accepted: true });
+          const entries = (envelope!.outputs as [string, unknown][]).map(
+            ([outUri, data]) => ({ uri: outUri, data }),
+          );
+          if (entries.length > 0) await this.store.write(entries);
+        } else {
+          await this.store.write([{ uri, data: msgPayload }]);
         }
 
+        results.push({ accepted: true });
+      }
+
+      return { id: request.id, success: true, data: results };
+    }
+
+    if (request.type === "read") {
+      // Client sends { urls: string[] }; respond with flat Output[]
+      // = [[uri, payload], ...]. Absence = "not found".
+      const urls: string[] = request.payload.urls ?? [];
+      try {
+        const data = await this.store.read(urls);
+        return { id: request.id, success: true, data };
+      } catch (err) {
         return {
           id: request.id,
-          success: true,
-          data: results,
+          success: false,
+          error: err instanceof Error ? err.message : String(err),
         };
-      },
-      read: () => {
-        // Client sends { urls: string[] }; respond with flat Output[]
-        // = [[uri, payload], ...]. Absence = "not found".
-        const urls: string[] = request.payload.urls ?? [];
-        const out: any[] = [];
+      }
+    }
 
-        for (const url of urls) {
-          const { uri, fn, params } = parseUrl(url);
-
-          if (fn === "ls") {
-            const prefix = uri.endsWith("/") ? uri : `${uri}/`;
-            const format = params.format ?? "full";
-            for (const [storedUri, stored] of this.storage) {
-              if (!storedUri.startsWith(prefix)) continue;
-              out.push(
-                format === "uris" ? [storedUri, undefined] : [
-                  storedUri,
-                  stored.data,
-                ],
-              );
-            }
-          } else if (fn === "count") {
-            const prefix = uri.endsWith("/") ? uri : `${uri}/`;
-            const n = Array.from(this.storage.keys())
-              .filter((k) => k.startsWith(prefix)).length;
-            out.push([countUri(uri), n]);
-          } else if (fn === "read") {
-            const stored = this.storage.get(uri);
-            if (stored) out.push([uri, stored.data]);
-            // absence: emit nothing
-          } else {
-            return {
-              id: request.id,
-              success: false,
-              error: `unsupported fn '${fn}'`,
-            };
-          }
-        }
-
-        return { id: request.id, success: true, data: out };
-      },
-      status: {
+    if (request.type === "status") {
+      return {
         id: request.id,
         success: true,
         data: {
           status: "healthy" as const,
           message: "WebSocket server is operational",
           schema: [],
-          details: {
-            connectedClients: 1,
-          },
+          details: { connectedClients: 1 },
         },
-      },
-    };
-
-    const responseGenerator = responses[request.type as keyof typeof responses];
-    if (responseGenerator) {
-      return typeof responseGenerator === "function"
-        ? responseGenerator()
-        : responseGenerator;
-    } else {
-      return {
-        id: request.id,
-        success: false,
-        error: "Unknown request type",
       };
     }
+
+    return {
+      id: request.id,
+      success: false,
+      error: "Unknown request type",
+    };
   }
 }
 
@@ -267,7 +226,7 @@ const factories: TestClientFactories = {
 
     // Create a mock that simulates validation failure (rejects data without a name field)
     class ValidationFailingMockWebSocket extends MockWebSocket {
-      protected override generateResponse(request: any): any {
+      protected override generateResponse(request: any): Promise<any> {
         if (request.type === "receive") {
           const batch = request.payload as [string, unknown][];
           const results: { accepted: boolean; error?: string }[] = [];
@@ -287,11 +246,11 @@ const factories: TestClientFactories = {
             }
           }
 
-          return {
+          return Promise.resolve({
             id: request.id,
             success: true,
             data: results,
-          };
+          });
         }
         return super.generateResponse(request);
       }

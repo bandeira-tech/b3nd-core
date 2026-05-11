@@ -30,7 +30,7 @@
 
 import { assertEquals } from "@std/assert";
 import { WebSocketClient } from "./mod.ts";
-import { OBSERVE_URI } from "../b3nd-core/url.ts";
+const OBSERVE_URI = "b3nd://observe";
 
 interface ObserveSub {
   id: string;

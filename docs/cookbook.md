@@ -7,13 +7,10 @@ system.
 > **Shape recap.** `pin.read(urls)` returns flat `Output[]` — `[uri, payload]`
 > tuples. "Not found" surfaces as absence (no Output). Synthetic answers (count
 > results, observe envelopes, cursors) live under the reserved `b3nd://`
-> namespace.
+> namespace; each store/canon picks its own conventions there.
 >
-> Helpers used in the snippets:
->
-> ```ts
-> import { count, list, listUris, x } from "@bandeira-tech/b3nd-core/url";
-> ```
+> The url grammar is `<uri>[?fn=…&param=value…]`. Trailing slash means `fn=ls`
+> by default. Write urls inline — there are no builders to import.
 
 ---
 
@@ -26,12 +23,8 @@ round-trip:
 ```ts
 const [profile, total, ...grid] = await pin.read([
   "instagram://users/alice",
-  count("instagram://users/alice/posts/"),
-  listUris("instagram://users/alice/posts/", {
-    limit: 12,
-    sortBy: "timestamp",
-    sortOrder: "desc",
-  }),
+  "instagram://users/alice/posts/?fn=count",
+  "instagram://users/alice/posts/?format=uris&limit=12&sortBy=timestamp&sortOrder=desc",
 ]);
 
 profile?.[1]; // { name, avatar, … }
@@ -53,21 +46,16 @@ counts.
 
 ```ts
 // First batch: total + page of comments (one round-trip).
-// `count` produces one Output; `list` expands inline to N items —
+// `fn=count` produces one Output; `fn=ls` expands inline to N items —
 // destructure: total = the count Output, page = the ls items.
 const [total, ...page] = await pin.read([
-  count("instagram://posts/p123/comments/"),
-  list("instagram://posts/p123/comments/", {
-    limit: 20,
-    page: 1,
-    sortBy: "timestamp",
-    sortOrder: "desc",
-  }),
+  "instagram://posts/p123/comments/?fn=count",
+  "instagram://posts/p123/comments/?limit=20&page=1&sortBy=timestamp&sortOrder=desc",
 ]);
 
 // Second batch: a count per comment, all in one round-trip.
 const counts = await pin.read(
-  page.map(([uri]) => count(`${uri}/replies/`)),
+  page.map(([uri]) => `${uri}/replies/?fn=count`),
 );
 
 const replies = Object.fromEntries(
@@ -84,10 +72,14 @@ const replies = Object.fromEntries(
 exposes a custom `x-feed.rank` function with a cursor extension.
 
 ```ts
+import { buildUrl } from "@bandeira-tech/b3nd-core/url";
+
 // Page 1.
 const page1 = await pin.read([
-  x("instagram://hashtags/coffee/", "x-feed.rank", {
-    limit: 30,
+  buildUrl({
+    uri: "instagram://hashtags/coffee/",
+    fn: "x-feed.rank",
+    params: { limit: 30 },
     ext: { "x-feed.algo": "engagement" },
   }),
 ]);
@@ -101,8 +93,10 @@ const cursor = cursorOut?.[1] as string | undefined;
 
 // Page 2.
 const page2 = await pin.read([
-  x("instagram://hashtags/coffee/", "x-feed.rank", {
-    limit: 30,
+  buildUrl({
+    uri: "instagram://hashtags/coffee/",
+    fn: "x-feed.rank",
+    params: { limit: 30 },
     ext: {
       "x-feed.algo": "engagement",
       ...(cursor ? { "x-feed.cursor": cursor } : {}),
@@ -127,7 +121,7 @@ for await (
   const [, uris] of pin.observe(["instagram://posts/p123/likes/*"], ac.signal)
 ) {
   // The likes prefix changed; recompute the count.
-  const [c] = await pin.read([count("instagram://posts/p123/likes/")]);
+  const [c] = await pin.read(["instagram://posts/p123/likes/?fn=count"]);
   ui.setLikeCount(c?.[1] as number);
 }
 ```

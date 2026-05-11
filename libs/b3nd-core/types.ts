@@ -195,15 +195,15 @@ export interface ProtocolInterfaceNode {
    *    payload — the framework does not interpret them.
    *
    * Synthetic results live under `b3nd://`. The framework reserves
-   * the namespace; protocols can add sub-paths freely.
+   * the namespace; protocols can add sub-paths freely. Each store
+   * defines and documents its own answer-address conventions.
    *
    * @example
    * ```ts
-   * import { count, listUris } from "@bandeira-tech/b3nd-core/url";
    * const outputs = await pin.read([
    *   "mutable://users/alice",
-   *   count("mutable://users/alice/posts/"),
-   *   listUris("mutable://users/alice/posts/", { limit: 12 }),
+   *   "mutable://users/alice/posts/?fn=count",
+   *   "mutable://users/alice/posts/?format=uris&limit=12",
    * ]);
    * // outputs = [
    * //   ["mutable://users/alice", { name: "Alice" }],

@@ -30,10 +30,9 @@
  * opaquely to the executing client. Callers inspect ext entries by their
  * flat string key (e.g. `ext["x-feed.cursor"]`).
  *
- * `parseUrl` returns a superset of the standard URL fields (`protocol`,
- * `hostname`, `path`, `program`) plus the b3nd-specific `fn`/`params`/`ext`.
- * Callers switch/destructure on the parsed result instead of importing
- * narrow boolean guards.
+ * The core only owns parsing + serialization. Synthetic answer addresses
+ * (e.g. `b3nd://count/<uri>`, observe envelopes) are a store/canon
+ * concern — each backend defines and documents its own conventions.
  */
 
 // ── Read params + parsed url shape ──────────────────────────────────
@@ -76,12 +75,6 @@ export interface ParsedUrl {
   /** Bag of `x-*` extension query params (every key starts with `x-`). */
   ext: Record<string, string>;
 }
-
-/**
- * Options accepted by the read-url helpers (`count`, `list`, ...).
- * Standard `ReadParams` plus an `ext` bag for `x-*` extensions.
- */
-export type ReadOpts = ReadParams & { ext?: Record<string, string> };
 
 /**
  * Parse a url into its structural fields, function, params, and extensions.
@@ -208,83 +201,3 @@ export function routingKey(url: string): string {
   const qIdx = url.indexOf("?");
   return qIdx < 0 ? url : url.slice(0, qIdx);
 }
-
-// ── Helpers ────────────────────────────────────────────────────────
-// Compose at call sites: `pin.read([count(uri), list(uri, {limit: 20})])`.
-
-function withTrailingSlash(uri: string): string {
-  return uri.endsWith("/") ? uri : `${uri}/`;
-}
-
-/**
- * Build a `fn=count` url. Ensures a trailing slash on the uri.
- */
-export function count(uri: string, opts?: ReadOpts): string {
-  const { ext, ...params } = opts ?? {};
-  return buildUrl({ uri: withTrailingSlash(uri), fn: "count", params, ext });
-}
-
-/**
- * Build a `fn=ls&format=full` url. Ensures a trailing slash on the uri.
- * Returns full records by default; use `listUris` for uri-only listings.
- */
-export function list(uri: string, opts?: ReadOpts): string {
-  const { ext, ...params } = opts ?? {};
-  return buildUrl({
-    uri: withTrailingSlash(uri),
-    fn: "ls",
-    params: { format: "full", ...params },
-    ext,
-  });
-}
-
-/**
- * Build a `fn=ls&format=uris` url. Ensures a trailing slash on the uri.
- * Records are omitted from the response; only `uri` is set on each item.
- */
-export function listUris(uri: string, opts?: ReadOpts): string {
-  const { ext, ...params } = opts ?? {};
-  return buildUrl({
-    uri: withTrailingSlash(uri),
-    fn: "ls",
-    params: { format: "uris", ...params },
-    ext,
-  });
-}
-
-/**
- * Build a url for a provider-defined `x-*` function.
- * Throws if `fnName` does not start with `x-`.
- */
-export function x(
-  uri: string,
-  fnName: string,
-  opts?: ReadOpts,
-): string {
-  if (!fnName.startsWith("x-")) {
-    throw new Error(`x() requires fn name starting with 'x-': ${fnName}`);
-  }
-  const { ext, ...params } = opts ?? {};
-  return buildUrl({ uri, fn: fnName, params, ext });
-}
-
-// ── Framework-reserved synthetic-content addresses ──────────────────
-// The framework reserves `b3nd://` for any uri it has to invent —
-// `fn=count` answers, observe-batch envelopes, etc. Other libraries may
-// invent their own synthetic namespaces under their own protocols; the
-// framework doesn't claim a generic "is this synthetic?" concept.
-
-const B3ND_NS = "b3nd://";
-
-/**
- * Build the address the executing client uses for a `fn=count` answer.
- * The original request uri is preserved as the tail so the answer is
- * self-describing.
- */
-export const countUri = (uri: string): string => `${B3ND_NS}count/${uri}`;
-
-/**
- * Default address for `observe` notification packages. Backends may
- * append `/<id>` or `/<pattern>` to disambiguate subscriptions.
- */
-export const OBSERVE_URI: string = `${B3ND_NS}observe`;

@@ -5,7 +5,7 @@
  *
  * Observe is INV-style notification: each successful write or delete
  * yields an `Output<string[]>` — `[meta, uris]` — where `meta` is a
- * synthetic `b3nd://observe` address and `uris` is the package of
+ * synthetic address picked by the emitter and `uris` is the package of
  * uris that fired in this batch. The default emitter sends one uri
  * per package; backends with cheap batching can send several.
  *
@@ -15,7 +15,14 @@
  */
 import { matchPattern } from "./match-pattern.ts";
 import type { Output } from "./types.ts";
-import { OBSERVE_URI, routingKey } from "./url.ts";
+import { routingKey } from "./url.ts";
+
+/**
+ * Synthetic address the emitter stamps on each observe package. The
+ * framework reserves `b3nd://` for invented uris; backends with their
+ * own observe machinery may use a different sentinel.
+ */
+const OBSERVE_URI = "b3nd://observe";
 
 export type ObserveListener = (
   uri: string,

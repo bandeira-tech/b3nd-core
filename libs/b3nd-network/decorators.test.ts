@@ -7,8 +7,9 @@
 
 import { assertEquals } from "@std/assert";
 import type { Output, ProtocolInterfaceNode } from "../b3nd-core/types.ts";
-import { OBSERVE_URI } from "../b3nd-core/url.ts";
 import { bestEffort } from "./decorators.ts";
+
+const OBSERVE_URI = "b3nd://observe";
 
 function stub(
   overrides: Partial<ProtocolInterfaceNode> = {},

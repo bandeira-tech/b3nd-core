@@ -30,7 +30,15 @@ import type {
   StoreWriteResult,
 } from "../b3nd-core/types.ts";
 import type { ParsedUrl } from "../b3nd-core/url.ts";
-import { countUri, parseUrl } from "../b3nd-core/url.ts";
+import { parseUrl } from "../b3nd-core/url.ts";
+
+/**
+ * Synthetic address MemoryStore uses to carry a `fn=count` answer back
+ * to the caller. The framework reserves `b3nd://` for invented uris;
+ * the `/count/<uri>` shape is a MemoryStore convention so the answer
+ * is self-describing.
+ */
+const countUri = (uri: string): string => `b3nd://count/${uri}`;
 
 type StorageNode<T = unknown> = {
   value?: { data: T };

@@ -18,8 +18,11 @@ parameters (`limit`, `page`, `format`, …) inside the url. This doc pins what t
 framework promises, what's reserved, and what you're free to interpret.
 
 > The url grammar lives in [`libs/b3nd-core/url.ts`](../libs/b3nd-core/url.ts).
-> Helpers (`count`, `list`, `listUris`, `x`) build the strings; you just need to
-> parse them on the way in.
+> It exposes `parseUrl`/`buildUrl`/`routingKey` — that's it. The framework
+> doesn't ship sugar builders or fn-specific predicates; the grammar is small
+> enough to compose with `buildUrl` directly. Synthetic answer addresses
+> (`b3nd://count/...`, observe envelopes) are a per-store convention, not a
+> framework one.
 
 ---
 
@@ -126,7 +129,7 @@ rule; protocols are free to add sub-paths under `b3nd://<your-ns>/`.
 The standard implementation is a switch on `fn`:
 
 ```ts
-import { parseUrl, countUri } from "@bandeira-tech/b3nd-core/url";
+import { parseUrl } from "@bandeira-tech/b3nd-core/url";
 import type { Output } from "@bandeira-tech/b3nd-core";
 
 async read<T>(urls: string[]): Promise<Output<T>[]> {
@@ -199,8 +202,8 @@ Open — interpreted per backend, **throw on unsupported values**:
 ### Convention: `page` indexing
 
 `page` is **1-indexed** by convention (page=1 is the first page). Backends are
-free to support 0-indexed too, but the helpers (`list(uri, {page: 1})`) and the
-reference `MemoryStore` assume 1-indexed.
+free to support 0-indexed too, but the reference `MemoryStore` assumes
+1-indexed.
 
 ### Throw on unsupported params
 
@@ -226,10 +229,12 @@ Format: `x-<ns>.<name>`. The `<ns>` is your store/protocol slug; the `<name>` is
 the operation.
 
 ```ts
-import { x } from "@bandeira-tech/b3nd-core/url";
+import { buildUrl } from "@bandeira-tech/b3nd-core/url";
 
-const url = x("mutable://users/", "x-pg.scan", {
-  limit: 100,
+const url = buildUrl({
+  uri: "mutable://users/",
+  fn: "x-pg.scan",
+  params: { limit: 100 },
   ext: { "x-pg.cursor": "abc123", "x-pg.where": "deleted_at IS NULL" },
 });
 // → "mutable://users/?fn=x-pg.scan&limit=100&x-pg.cursor=abc123&x-pg.where=…"
@@ -298,7 +303,7 @@ fn, regardless of advertised support). That may change.
 | Malformed url                                      | `parseUrl` throws; let it propagate         |
 | `fn=read` on a missing uri                         | Push nothing (absence)                      |
 | Empty result for a `fn=ls` over a missing prefix   | Return `[]`                                 |
-| Empty result for `fn=count` over a missing prefix  | Push `[countUri(uri), 0]`                   |
+| Empty result for `fn=count` over a missing prefix  | Push `[<your-count-answer-uri>, 0]`         |
 | Domain-level "permission denied", quota, etc.      | Encode in payload by protocol convention    |
 
 Rule of thumb: **the framework knows two things — Output or throw**. Anything
@@ -309,7 +314,7 @@ richer lives in your payload.
 ## 8. A 50-line worked example
 
 ```ts
-import { countUri, parseUrl } from "@bandeira-tech/b3nd-core/url";
+import { parseUrl } from "@bandeira-tech/b3nd-core/url";
 import type {
   Output,
   ParsedUrl,
@@ -318,6 +323,10 @@ import type {
   StoreEntry,
   StoreWriteResult,
 } from "@bandeira-tech/b3nd-core";
+
+// MyStore picks its own convention for the count answer address —
+// anything under the framework's `b3nd://` reserved namespace.
+const myCountUri = (uri: string): string => `b3nd://count/${uri}`;
 
 class MyStore implements Store {
   private kv = new Map<string, unknown>();
@@ -373,7 +382,7 @@ class MyStore implements Store {
   private count(p: ParsedUrl): Output<number> {
     const prefix = p.uri.endsWith("/") ? p.uri : `${p.uri}/`;
     const n = [...this.kv.keys()].filter((k) => k.startsWith(prefix)).length;
-    return [countUri(p.uri), n];
+    return [myCountUri(p.uri), n];
   }
 
   delete(uris: string[]) {

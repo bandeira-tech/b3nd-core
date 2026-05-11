@@ -31,8 +31,6 @@ Deno.test({
 
 // ── fn dispatcher: read / ls / count / x-* ────────────────────────
 
-import { count, list, listUris, x } from "../b3nd-core/url.ts";
-
 async function seedUsers(): Promise<MemoryStore> {
   const s = new MemoryStore();
   await s.write([
@@ -51,7 +49,7 @@ Deno.test("MemoryStore.read - fn=read returns single record", async () => {
 
 Deno.test("MemoryStore.read - fn=ls returns full records by default", async () => {
   const s = await seedUsers();
-  const results = await s.read([list("mutable://app/users")]);
+  const results = await s.read(["mutable://app/users/?format=full"]);
   assertEquals(results.length, 3);
   for (const r of results) {
     assertEquals(typeof r[0], "string");
@@ -61,7 +59,7 @@ Deno.test("MemoryStore.read - fn=ls returns full records by default", async () =
 
 Deno.test("MemoryStore.read - fn=ls format=uris omits records", async () => {
   const s = await seedUsers();
-  const results = await s.read([listUris("mutable://app/users")]);
+  const results = await s.read(["mutable://app/users/?format=uris"]);
   assertEquals(results.length, 3);
   for (const r of results) {
     assertEquals(typeof r[0], "string");
@@ -72,10 +70,10 @@ Deno.test("MemoryStore.read - fn=ls format=uris omits records", async () => {
 Deno.test("MemoryStore.read - fn=ls limit + page slices results", async () => {
   const s = await seedUsers();
   const page1 = await s.read([
-    list("mutable://app/users", { limit: 2, page: 1, sortBy: "uri" }),
+    "mutable://app/users/?limit=2&page=1&sortBy=uri",
   ]);
   const page2 = await s.read([
-    list("mutable://app/users", { limit: 2, page: 2, sortBy: "uri" }),
+    "mutable://app/users/?limit=2&page=2&sortBy=uri",
   ]);
   assertEquals(page1.length, 2);
   assertEquals(page2.length, 1);
@@ -87,7 +85,7 @@ Deno.test("MemoryStore.read - fn=ls limit + page slices results", async () => {
 Deno.test("MemoryStore.read - fn=ls sortOrder=desc reverses", async () => {
   const s = await seedUsers();
   const results = await s.read([
-    list("mutable://app/users", { sortBy: "uri", sortOrder: "desc" }),
+    "mutable://app/users/?sortBy=uri&sortOrder=desc",
   ]);
   assertEquals(results.map((r) => r[0]), [
     "mutable://app/users/carol",
@@ -98,13 +96,13 @@ Deno.test("MemoryStore.read - fn=ls sortOrder=desc reverses", async () => {
 
 Deno.test("MemoryStore.read - fn=count matches ls length", async () => {
   const s = await seedUsers();
-  const [c] = await s.read([count("mutable://app/users")]);
+  const [c] = await s.read(["mutable://app/users/?fn=count"]);
   assertEquals(c?.[1], 3);
 });
 
 Deno.test("MemoryStore.read - fn=count over empty prefix returns 0", async () => {
   const s = new MemoryStore();
-  const [c] = await s.read([count("mutable://nothing/here")]);
+  const [c] = await s.read(["mutable://nothing/here/?fn=count"]);
   assertEquals(c?.[1], 0);
 });
 
@@ -112,7 +110,7 @@ Deno.test("MemoryStore.read - unsupported pattern throws", async () => {
   const s = await seedUsers();
   let threw = false;
   try {
-    await s.read([list("mutable://app/users", { pattern: "a*" })]);
+    await s.read(["mutable://app/users/?pattern=a*"]);
   } catch (e) {
     threw = true;
     assertEquals(/pattern/.test(String(e)), true);
@@ -124,7 +122,7 @@ Deno.test("MemoryStore.read - x-* fn throws unsupported", async () => {
   const s = await seedUsers();
   let threw = false;
   try {
-    await s.read([x("mutable://app/users/", "x-pg.scan")]);
+    await s.read(["mutable://app/users/?fn=x-pg.scan"]);
   } catch (e) {
     threw = true;
     assertEquals(/unsupported fn/.test(String(e)), true);
@@ -142,8 +140,8 @@ Deno.test("MemoryStore.read - heterogeneous batch (read + count + ls)", async ()
   const s = await seedUsers();
   const results = await s.read([
     "mutable://app/users/alice",
-    count("mutable://app/users"),
-    listUris("mutable://app/users", { sortBy: "uri" }),
+    "mutable://app/users/?fn=count",
+    "mutable://app/users/?format=uris&sortBy=uri",
   ]);
   // 1 read + 1 count + 3 ls items = 5 results
   assertEquals(results.length, 5);

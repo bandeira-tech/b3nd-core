@@ -1,20 +1,10 @@
 /**
  * URL grammar tests — parse/build round-trip, structural fields,
- * defaults, helpers, and framework synthetic constructors.
+ * defaults, and error handling.
  */
 
 import { assertEquals, assertThrows } from "@std/assert";
-import {
-  buildUrl,
-  count,
-  countUri,
-  list,
-  listUris,
-  OBSERVE_URI,
-  parseUrl,
-  routingKey,
-  x,
-} from "./url.ts";
+import { buildUrl, parseUrl, routingKey } from "./url.ts";
 
 // ── parseUrl: fn dispatch ──────────────────────────────────────────
 
@@ -189,89 +179,4 @@ Deno.test("routingKey - strips query", () => {
 Deno.test("routingKey - preserves trailing slash", () => {
   assertEquals(routingKey("m://x/"), "m://x/");
   assertEquals(routingKey("m://x"), "m://x");
-});
-
-// ── helpers ─────────────────────────────────────────────────────────
-
-Deno.test("count - adds trailing slash and fn=count", () => {
-  assertEquals(count("m://x"), "m://x/?fn=count");
-  assertEquals(count("m://x/"), "m://x/?fn=count");
-});
-
-Deno.test("count - passes through params and ext", () => {
-  assertEquals(
-    count("m://x", { pattern: "a*", ext: { "x-pg.shard": "2" } }),
-    "m://x/?fn=count&pattern=a*&x-pg.shard=2",
-  );
-});
-
-Deno.test("list - adds trailing slash, fn=ls (omitted as default), format=full", () => {
-  assertEquals(list("m://x"), "m://x/?format=full");
-  assertEquals(list("m://x/"), "m://x/?format=full");
-});
-
-Deno.test("list - threads limit/page/sort", () => {
-  assertEquals(
-    list("m://x", { limit: 12, page: 2, sortBy: "timestamp" }),
-    "m://x/?format=full&limit=12&page=2&sortBy=timestamp",
-  );
-});
-
-Deno.test("listUris - format=uris", () => {
-  assertEquals(listUris("m://x"), "m://x/?format=uris");
-  assertEquals(
-    listUris("m://x", { limit: 30 }),
-    "m://x/?format=uris&limit=30",
-  );
-});
-
-Deno.test("x - rejects non-x- fn names", () => {
-  assertThrows(() => x("m://x", "scan"), Error, "x() requires fn name");
-});
-
-Deno.test("x - emits provider fn with ext", () => {
-  assertEquals(
-    x("m://x/", "x-pg.scan", { limit: 50, ext: { "x-pg.cursor": "z" } }),
-    "m://x/?fn=x-pg.scan&limit=50&x-pg.cursor=z",
-  );
-});
-
-// ── synthetic constructors ─────────────────────────────────────────
-
-Deno.test("countUri - wraps original uri under b3nd://count/", () => {
-  assertEquals(
-    countUri("mutable://users/alice/posts/"),
-    "b3nd://count/mutable://users/alice/posts/",
-  );
-});
-
-Deno.test("OBSERVE_URI - is b3nd://observe", () => {
-  assertEquals(OBSERVE_URI, "b3nd://observe");
-});
-
-Deno.test("parseUrl - inspects count synthetic via hostname", () => {
-  const p = parseUrl(countUri("mutable://users/alice/posts/"));
-  assertEquals(p.protocol, "b3nd");
-  assertEquals(p.hostname, "count");
-  // The wrapped uri lives in `path` with leading slash preserved.
-  assertEquals(p.path, "/mutable://users/alice/posts/");
-});
-
-// ── helper composition ────────────────────────────────────────────
-
-Deno.test("helpers compose into a read([...]) batch", () => {
-  const urls = [
-    "mutable://users/alice",
-    count("mutable://users/alice/posts/"),
-    listUris("mutable://users/alice/posts/", {
-      limit: 12,
-      sortBy: "timestamp",
-      sortOrder: "desc",
-    }),
-  ];
-  assertEquals(urls, [
-    "mutable://users/alice",
-    "mutable://users/alice/posts/?fn=count",
-    "mutable://users/alice/posts/?format=uris&limit=12&sortBy=timestamp&sortOrder=desc",
-  ]);
 });

@@ -15,7 +15,12 @@ import type {
 } from "../b3nd-core/types.ts";
 import { encodeBase64 } from "../b3nd-core/encoding.ts";
 import { decodeBinaryFromJson } from "../b3nd-core/binary.ts";
-import { OBSERVE_URI, routingKey } from "../b3nd-core/url.ts";
+import { routingKey } from "../b3nd-core/url.ts";
+
+// Synthetic meta uri stamped on each observe envelope yielded by this
+// client. Backends with their own observe machinery may use a different
+// sentinel.
+const OBSERVE_URI = "b3nd://observe";
 import { openSseStream } from "./sse.ts";
 
 /**

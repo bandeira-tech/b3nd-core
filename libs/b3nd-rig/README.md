@@ -62,24 +62,21 @@ await rig.receive([["mutable://open/external", { source: "webhook" }]]);
 ## Observation
 
 ```typescript
-import { count, list, listUris } from "@bandeira-tech/b3nd-core/url";
-
 // Reads always take an array of urls; results in input order, ls
 // expands inline.
 const results = await rig.read<T>([u1, u2]);
 
-// Compose helpers for fn-aware reads.
+// Trailing slash → fn=ls; `?fn=...` overrides. Compose by url.
 await rig.read([
   "mutable://app/users/alice", // fn=read (default)
-  count("mutable://app/users"), // fn=count → record.data: number
-  list("mutable://app/users", { limit: 20 }), // fn=ls → expands inline
-  listUris("mutable://app/users"), // fn=ls&format=uris (no record)
+  "mutable://app/users/?fn=count", // → number, addressed at b3nd://count/...
+  "mutable://app/users/?limit=20", // fn=ls → expands inline
+  "mutable://app/users/?format=uris", // fn=ls&format=uris (no record)
 ]);
 ```
 
-The `count`/`list`/`listUris`/`x` helpers build url strings; the executing
-client parses them with `parseUrl` and dispatches on `fn`. See `url.ts` for the
-grammar.
+The executing client parses urls with `parseUrl` from `@bandeira-tech/b3nd-core`
+and dispatches on `fn`. See `libs/b3nd-core/url.ts` for the grammar.
 
 ## Encrypted Operations
 
