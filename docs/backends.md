@@ -153,12 +153,22 @@ async read<T>(urls: string[]): Promise<Output<T>[]> {
 
 ```ts
 interface ParsedUrl {
-  uri: string; // address (no query)
+  // WHATWG-style structural fields
+  protocol: string; // e.g. "mutable", "b3nd"
+  hostname: string; // authority after protocol://
+  path: string; // everything after protocol://hostname
+  program: string; // protocol + "://" + hostname
+  // b3nd grammar
+  uri: string; // full routing identity (program + path, no query)
   fn: string; // 'read' | 'ls' | 'count' | 'x-...'
   params: ReadParams; // typed standard params (see below)
   ext: Record<string, string>; // x-* extension bag
 }
 ```
+
+Dispatch on `fn`, route on `program`/`hostname`, inspect `ext` directly by its
+flat string key (e.g. `ext["x-feed.cursor"]`). The module exports `parseUrl` as
+the single entry point — no separate guards or inspectors.
 
 If a url has no explicit `fn=`, the default is `read` (or `ls` when the uri ends
 in `/`). If the url's `limit` or `page` is malformed, `parseUrl` throws — that's
