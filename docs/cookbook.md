@@ -9,7 +9,8 @@ system.
 > requested `fn`:
 >
 > - `fn=read` → `T | undefined` (undefined = not found)
-> - `fn=ls` → `Output<T>[]` (entries under the prefix)
+> - `fn=ls&format=full` → `Output<T>[]` (entries under the prefix)
+> - `fn=ls&format=uris` → `string[]` (flat list of entry uris)
 > - `fn=count` → `number`
 > - `fn=x-…` → provider-defined
 >
@@ -33,13 +34,13 @@ const [profile, total, grid] = await pin.read([
 
 profile?.[1]; // { name, avatar, … } | undefined
 total?.[1]; // 4127  — payload is the count, addressed under the request url
-const entries = grid?.[1] as Array<[string, undefined]>;
-entries.map(([uri]) => uri); // ["instagram://users/alice/posts/p1", …]
+const uris = grid?.[1] as string[];
+uris; // ["instagram://users/alice/posts/p1", …]
 ```
 
-Why this is good: the underlying transport sees one POST. The grid's outer slot
-carries an `Output[]` of the thumbnails — each `[uri, undefined]` because
-`format=uris` omits payloads. The viewport fetches each uri when needed.
+Why this is good: the underlying transport sees one POST. The grid's payload is
+a flat list of uris (`format=uris`) — no inner tuples to unwrap. The viewport
+fetches each uri when needed.
 
 ---
 
@@ -119,8 +120,10 @@ The cursor lives in the url, which means a deep-linkable feed page just works:
 
 ## Watch a uri for changes
 
-Observe yields `Output<string[]>` packages — `[meta, uris]` — INV-style. Iterate
-the inner uris and read each:
+Observe yields `Output<string[]>` packages — `[inputUrl, uris]` — INV-style. The
+first element echoes the subscription url that matched (so a single
+`observe([a, b])` call can dispatch by `a` vs `b`); the second is the list of
+uris that fired in this batch.
 
 ```ts
 const ac = new AbortController();

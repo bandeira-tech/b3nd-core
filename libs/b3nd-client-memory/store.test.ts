@@ -58,15 +58,12 @@ Deno.test("MemoryStore.read - fn=ls returns full records by default", async () =
   }
 });
 
-Deno.test("MemoryStore.read - fn=ls format=uris omits records", async () => {
+Deno.test("MemoryStore.read - fn=ls format=uris returns flat uri list", async () => {
   const s = await seedUsers();
   const [result] = await s.read(["mutable://app/users/?format=uris"]);
-  const entries = result?.[1] as Array<[string, unknown]>;
-  assertEquals(entries.length, 3);
-  for (const r of entries) {
-    assertEquals(typeof r[0], "string");
-    assertEquals(r?.[1], undefined);
-  }
+  const uris = result?.[1] as string[];
+  assertEquals(uris.length, 3);
+  for (const u of uris) assertEquals(typeof u, "string");
 });
 
 Deno.test("MemoryStore.read - fn=ls limit + page slices results", async () => {
@@ -152,13 +149,10 @@ Deno.test("MemoryStore.read - heterogeneous batch (read + count + ls)", async ()
   assertEquals(results.length, 3);
   assertEquals(results[0]?.[1], { age: 30 });
   assertEquals(results[1]?.[1], 3);
-  const entries = results[2]?.[1] as Array<[string, unknown]>;
-  assertEquals(
-    entries.map((r) => r[0]),
-    [
-      "mutable://app/users/alice",
-      "mutable://app/users/bob",
-      "mutable://app/users/carol",
-    ],
-  );
+  const uris = results[2]?.[1] as string[];
+  assertEquals(uris, [
+    "mutable://app/users/alice",
+    "mutable://app/users/bob",
+    "mutable://app/users/carol",
+  ]);
 });

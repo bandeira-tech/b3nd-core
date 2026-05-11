@@ -60,10 +60,11 @@ export interface StatusResult {
  *   passed — the result echoes it back so callers can pair input to
  *   output positionally or by lookup. The payload's shape depends on
  *   the requested `fn`:
- *     - `fn=read`  → `T | undefined` (undefined = not found)
- *     - `fn=ls`    → `Output[]` of the entries under the prefix
- *     - `fn=count` → `number`
- *     - `fn=x-…`   → provider-defined
+ *     - `fn=read`           → `T | undefined` (undefined = not found)
+ *     - `fn=ls&format=full` → `Output[]` of the entries under the prefix
+ *     - `fn=ls&format=uris` → `string[]` — flat list of entry uris
+ *     - `fn=count`          → `number`
+ *     - `fn=x-…`            → provider-defined
  *
  * A payload of `null` is the wire-level "delete this URI" convention
  * (only meaningful on the write side).
@@ -194,11 +195,12 @@ export interface ProtocolInterfaceNode {
    * element echoes the caller's url so results are addressable
    * positionally or by lookup. The payload's type depends on the
    * requested `fn`:
-   *  - `fn=read`  → `T | undefined` (undefined = not found)
-   *  - `fn=ls`    → `Output<T>[]` of the entries under the prefix
-   *                 (each entry's first element is the entry's uri)
-   *  - `fn=count` → `number`
-   *  - `fn=x-…`   → provider-defined
+   *  - `fn=read`           → `T | undefined` (undefined = not found)
+   *  - `fn=ls&format=full` → `Output<T>[]` of the entries under the
+   *                          prefix (each `[entry-uri, data]`)
+   *  - `fn=ls&format=uris` → `string[]` — flat list of entry uris
+   *  - `fn=count`          → `number`
+   *  - `fn=x-…`            → provider-defined
    *
    * **Errors** (option A):
    *  - Transport / programmer errors throw (network down, malformed
@@ -217,21 +219,22 @@ export interface ProtocolInterfaceNode {
    * ]);
    * profile[1]; // { name: "Alice" } | undefined
    * total[1];   // 4127
-   * posts[1];   // [["mutable://.../p1", undefined], ...]
+   * posts[1];   // ["mutable://users/alice/posts/p1", ...]
    * ```
    */
   read<T = unknown>(urls: string[]): Promise<Output<T>[]>;
 
   /**
    * Observe a batch of urls. Yields `Output<string[]>` packages —
-   * INV-style bundles of uris that changed under a watched routing
-   * key. The observer reads each uri to learn its current state.
+   * INV-style bundles of uris that changed under a watched pattern.
+   * The observer reads each uri to learn its current state.
    *
-   * Each yielded `Output` is `[meta, uris]` where `meta` is a
-   * synthetic `b3nd://observe` (or `b3nd://observe/<id>`) address and
-   * `uris` is the list of uris that fired in this batch. Backends
-   * may emit one uri per package or batch many — the consumer
-   * iterates either way.
+   * Each yielded `Output` is `[inputUrl, uris]` where `inputUrl` is
+   * one of the caller's subscription urls — the one whose pattern
+   * matched the change — and `uris` is the list of uris that fired
+   * in this batch. A single change matching multiple subscription
+   * urls yields once per matching url. Backends may emit one uri per
+   * package or batch many — the consumer iterates either way.
    *
    * The `signal` controls lifecycle — abort to stop observing.
    *

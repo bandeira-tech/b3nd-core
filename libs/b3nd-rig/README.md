@@ -64,17 +64,18 @@ await rig.receive([["mutable://open/external", { source: "webhook" }]]);
 ```typescript
 // `read(urls)` returns `Output[]` 1:1 with input — one [inputUrl, payload]
 // slot per requested url, in input order. Payload shape depends on `fn`:
-//   read  → T | undefined
-//   ls    → Output<T>[]
-//   count → number
+//   read              → T | undefined
+//   ls (format=full)  → Output<T>[]
+//   ls (format=uris)  → string[]
+//   count             → number
 const [profile, total, posts] = await rig.read([
   "mutable://app/users/alice", // fn=read (default)
   "mutable://app/users/?fn=count", // payload: number
-  "mutable://app/users/?format=uris", // payload: Output<undefined>[]
+  "mutable://app/users/?format=uris", // payload: string[]
 ]);
 profile?.[1]; // user record (or undefined on miss)
 total?.[1]; // count
-(posts?.[1] as Array<[string, unknown]>).map(([uri]) => uri);
+posts?.[1] as string[]; // ["mutable://app/users/alice", ...]
 ```
 
 The executing client parses urls with `parseUrl` from `@bandeira-tech/b3nd-core`

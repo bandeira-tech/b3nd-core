@@ -101,16 +101,17 @@ read<T>(urls: string[]): Promise<Output<T>[]>
 
 ### Result shape per `fn`
 
-| `fn`    | Outer slot | Payload                                                             |
-| ------- | ---------- | ------------------------------------------------------------------- |
-| `read`  | 1          | `T \| undefined` (undefined = not found)                            |
-| `ls`    | 1          | `Output<T>[]` — entries under the prefix (each `[entry-uri, data]`) |
-| `count` | 1          | `number`                                                            |
-| `x-*.*` | 1          | provider-defined                                                    |
+| `fn`               | Outer slot | Payload                                                             |
+| ------------------ | ---------- | ------------------------------------------------------------------- |
+| `read`             | 1          | `T \| undefined` (undefined = not found)                            |
+| `ls` (format=full) | 1          | `Output<T>[]` — entries under the prefix (each `[entry-uri, data]`) |
+| `ls` (format=uris) | 1          | `string[]` — flat list of entry uris                                |
+| `count`            | 1          | `number`                                                            |
+| `x-*.*`            | 1          | provider-defined                                                    |
 
 The first element of each Output is the **input url** the caller passed. For
-`fn=ls`, the inner `Output[]` items use the **entry uri** in their first element
-(the matched address), not the input url.
+`fn=ls&format=full`, the inner `Output[]` items use the **entry uri** in their
+first element (the matched address), not the input url.
 
 ### The `b3nd://` namespace
 
@@ -186,11 +187,11 @@ a programmer error, let it propagate.
 Spec'd by the framework — every backend should accept these meanings when
 applicable:
 
-| Param    | Type     | Notes                                                                       |
-| -------- | -------- | --------------------------------------------------------------------------- |
-| `format` | `string` | For `fn=ls`: `'full'` (default) or `'uris'` (Output payload is `undefined`) |
-| `limit`  | `number` | Max items returned                                                          |
-| `page`   | `number` | Page number — **convention**, see below                                     |
+| Param    | Type     | Notes                                                                                         |
+| -------- | -------- | --------------------------------------------------------------------------------------------- |
+| `format` | `string` | For `fn=ls`: `'full'` (default; payload is `Output<T>[]`) or `'uris'` (payload is `string[]`) |
+| `limit`  | `number` | Max items returned                                                                            |
+| `page`   | `number` | Page number — **convention**, see below                                                       |
 
 Open — interpreted per backend, **throw on unsupported values**:
 
@@ -304,7 +305,7 @@ fn, regardless of advertised support). That may change.
 | Caller asked for an unsupported `fn` or param      | **Throw** — programmer error                |
 | Malformed url                                      | `parseUrl` throws; let it propagate         |
 | `fn=read` on a missing uri                         | `[inputUrl, undefined]` (1:1 slot, absent)  |
-| Empty result for a `fn=ls` over a missing prefix   | `[inputUrl, []]` (empty inner Output[])     |
+| Empty result for a `fn=ls` over a missing prefix   | `[inputUrl, []]` (empty list, either shape) |
 | Empty result for `fn=count` over a missing prefix  | `[inputUrl, 0]`                             |
 | Domain-level "permission denied", quota, etc.      | Encode in payload by protocol convention    |
 
@@ -350,7 +351,7 @@ class MyStore implements Store {
     }));
   }
 
-  private ls<T>(p: ParsedUrl): Output<T>[] {
+  private ls<T>(p: ParsedUrl): Output<T>[] | string[] {
     if (p.params.pattern !== undefined) {
       throw new Error("MyStore: pattern not supported");
     }
@@ -365,9 +366,8 @@ class MyStore implements Store {
       entries = entries.slice(start, start + p.params.limit);
     }
     const format = p.params.format ?? "full";
-    return entries.map(([uri, payload]) =>
-      format === "uris" ? [uri, undefined as T] : [uri, payload as T]
-    );
+    if (format === "uris") return entries.map(([uri]) => uri);
+    return entries as Output<T>[];
   }
 
   private count(p: ParsedUrl): number {

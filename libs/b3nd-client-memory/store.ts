@@ -190,7 +190,7 @@ export class MemoryStore implements Store {
     return out;
   }
 
-  private _list<T>(parsed: ParsedUrl): Output<T>[] {
+  private _list<T>(parsed: ParsedUrl): Output<T>[] | string[] {
     const { params } = parsed;
 
     // Programmer errors: unsupported params throw — option-A reserves
@@ -219,8 +219,10 @@ export class MemoryStore implements Store {
       entries = entries.slice(start, start + params.limit);
     }
 
+    // `format=uris` flattens to a uri list — no inner tuples, no
+    // undefined payloads. `format=full` keeps `Output<T>[]`.
     if (format === "uris") {
-      return entries.map(([uri]) => [uri, undefined as T]);
+      return entries.map(([uri]) => uri);
     }
     return entries as Output<T>[];
   }

@@ -9,8 +9,6 @@ import { assertEquals } from "@std/assert";
 import type { Output, ProtocolInterfaceNode } from "../b3nd-core/types.ts";
 import { bestEffort } from "./decorators.ts";
 
-const OBSERVE_URI = "b3nd://observe";
-
 function stub(
   overrides: Partial<ProtocolInterfaceNode> = {},
 ): ProtocolInterfaceNode {
@@ -65,7 +63,7 @@ Deno.test("bestEffort passes through observe unchanged (not a silent no-op)", as
     receive: (m) => Promise.resolve(m.map(() => ({ accepted: true }))),
     read: () => Promise.resolve([]),
     async *observe() {
-      yield [OBSERVE_URI, ["mutable://x/1"]] as Output<string[]>;
+      yield ["*", ["mutable://x/1"]] as Output<string[]>;
     },
     status: () => Promise.resolve({ status: "healthy" as const }),
   };
