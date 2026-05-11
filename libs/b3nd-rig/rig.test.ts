@@ -3,7 +3,6 @@ import { Identity } from "./identity.ts";
 import { getSupportedProtocols } from "./backend-factory.ts";
 import type { BackendResolver } from "./backend-factory.ts";
 import { Rig } from "./rig.ts";
-import { createTestPrograms } from "../b3nd-client-memory/mod.ts";
 import type { Program } from "../b3nd-core/types.ts";
 import { MemoryStore } from "../b3nd-client-memory/store.ts";
 import { DataStoreClient } from "../b3nd-core/data-store-client.ts";
@@ -17,6 +16,25 @@ async function readData<T>(rig: Rig, url: string): Promise<T | null> {
 /** Shorthand: null-aware Store adapter backed by an in-memory store. */
 function memClient() {
   return new DataStoreClient(new MemoryStore());
+}
+
+/**
+ * Create a permissive test program set that classifies every message
+ * under common URI prefixes as `{ code: "ok" }` — no rejections. Handy
+ * for rig tests that want the pipeline running without caring about
+ * message-level validation.
+ */
+function createTestPrograms(): Record<string, Program> {
+  // deno-lint-ignore require-await
+  const acceptAll: Program = async () => ({ code: "ok" });
+  return {
+    "mutable://accounts": acceptAll,
+    "mutable://open": acceptAll,
+    "mutable://data": acceptAll,
+    "immutable://accounts": acceptAll,
+    "immutable://open": acceptAll,
+    "immutable://data": acceptAll,
+  };
 }
 
 import type { EncryptedPayload } from "../b3nd-encrypt/mod.ts";
