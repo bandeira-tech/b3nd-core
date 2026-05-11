@@ -54,11 +54,10 @@ async function readEncrypted<T = unknown>(
       "readEncrypted: identity has no encryption/decryption keys.",
     );
   }
-  const results = await rig.read([uri]);
-  const result = results[0];
-  if (!result) return null;
+  const [result] = await rig.read([uri]);
+  const payload = result?.[1];
+  if (payload === undefined) return null;
 
-  const payload = result[1];
   if (
     !payload || typeof payload !== "object" ||
     !("data" in (payload as Record<string, unknown>)) ||
@@ -524,8 +523,9 @@ Deno.test("Rig.read - trailing-slash lists items", async () => {
   await rig.receive([["mutable://open/a", 1]]);
   await rig.receive([["mutable://open/b", 2]]);
 
-  const results = await rig.read(["mutable://open/"]);
-  assertEquals(results.length, 2);
+  const [result] = await rig.read(["mutable://open/"]);
+  const entries = result?.[1] as Array<[string, unknown]>;
+  assertEquals(entries.length, 2);
 });
 
 // rig.delete() no longer exists — removed from ProtocolInterfaceNode
@@ -671,9 +671,11 @@ Deno.test("Rig.read - handles mix of existing and missing URIs", async () => {
     "mutable://open/yes",
     "mutable://open/nope",
   ]);
-  // Option-A: 1 hit + 1 miss = 1 Output (miss is absent).
-  assertEquals(results.length, 1);
+  // 1:1: hit has payload, miss has undefined payload.
+  assertEquals(results.length, 2);
   assertEquals(results[0]?.[0], "mutable://open/yes");
+  assertEquals(results[0]?.[1], "found");
+  assertEquals(results[1]?.[1], undefined);
 });
 
 Deno.test("Rig.read - handles empty URI array", async () => {
@@ -740,7 +742,7 @@ Deno.test("Rig.read - multi-URI returns data for each", async () => {
   assertEquals(results[1]?.[1], { name: "Bob" });
 });
 
-Deno.test("Rig.read - multi-URI omits missing URIs", async () => {
+Deno.test("Rig.read - multi-URI marks misses with undefined payload", async () => {
   const _route57 = connection(memClient(), ["*"]);
   const rig = new Rig({
     routes: {
@@ -756,10 +758,11 @@ Deno.test("Rig.read - multi-URI omits missing URIs", async () => {
     "mutable://open/rdm2/missing",
   ]);
 
-  // Option-A: missing URIs surface as absence — 1 hit + 1 miss = 1 Output.
-  assertEquals(results.length, 1);
+  // 1:1 with input: hit + miss = 2 slots, miss has undefined payload.
+  assertEquals(results.length, 2);
   assertEquals(results[0]?.[0], "mutable://open/rdm2/exists");
   assertEquals(results[0]?.[1], { ok: true });
+  assertEquals(results[1]?.[1], undefined);
 });
 
 Deno.test("Rig.read - empty array returns empty results", async () => {
@@ -774,7 +777,7 @@ Deno.test("Rig.read - empty array returns empty results", async () => {
   assertEquals(results.length, 0);
 });
 
-Deno.test("Rig.read - multi-URI all missing returns all failures", async () => {
+Deno.test("Rig.read - multi-URI all missing has undefined payloads", async () => {
   const _route59 = connection(memClient(), ["*"]);
   const rig = new Rig({
     routes: {
@@ -786,7 +789,9 @@ Deno.test("Rig.read - multi-URI all missing returns all failures", async () => {
     "mutable://open/gone/a",
     "mutable://open/gone/b",
   ]);
-  assertEquals(results.length, 0);
+  assertEquals(results.length, 2);
+  assertEquals(results[0]?.[1], undefined);
+  assertEquals(results[1]?.[1], undefined);
 });
 
 // ── Rig.deleteMany tests ──
@@ -807,10 +812,9 @@ Deno.test("Rig.read - trailing-slash returns URI strings", async () => {
   await rig.receive([["mutable://open/ld/b", 2]]);
   await rig.receive([["mutable://open/ld/c", 3]]);
 
-  const results = await rig.read(["mutable://open/ld/"]);
-  const uris = results.map((r) => r[0]).filter(
-    Boolean,
-  );
+  const [result] = await rig.read(["mutable://open/ld/"]);
+  const entries = result?.[1] as Array<[string, unknown]>;
+  const uris = entries.map((r) => r[0]);
   assertEquals(uris.length, 3);
   assertEquals(uris.includes("mutable://open/ld/a"), true);
   assertEquals(uris.includes("mutable://open/ld/b"), true);
@@ -825,8 +829,9 @@ Deno.test("Rig.read - trailing-slash returns empty for empty prefix", async () =
       read: [_route62],
     },
   });
-  const results = await rig.read(["mutable://open/nothing-here/"]);
-  assertEquals(results.length, 0);
+  const [result] = await rig.read(["mutable://open/nothing-here/"]);
+  const entries = result?.[1] as Array<[string, unknown]>;
+  assertEquals(entries.length, 0);
 });
 
 // ── Rig.read trailing-slash (readAll equivalent) tests ──
@@ -842,18 +847,16 @@ Deno.test("Rig.read - trailing-slash reads all data under a prefix", async () =>
   await rig.receive([["mutable://open/ra/alice", { name: "Alice" }]]);
   await rig.receive([["mutable://open/ra/bob", { name: "Bob" }]]);
 
-  const results = await rig.read<{ name: string }>(["mutable://open/ra/"]);
-  const data = new Map(
-    results.filter((r) => r?.[1] !== undefined && r[0]).map((
-      r,
-    ) => [r[0]!, r![1]]),
-  );
+  const [result] = await rig.read<Array<[string, { name: string }]>>([
+    "mutable://open/ra/",
+  ]);
+  const data = new Map(result?.[1] ?? []);
   assertEquals(data.size, 2);
   assertEquals(data.get("mutable://open/ra/alice"), { name: "Alice" });
   assertEquals(data.get("mutable://open/ra/bob"), { name: "Bob" });
 });
 
-Deno.test("Rig.read - trailing-slash returns empty for empty prefix", async () => {
+Deno.test("Rig.read - trailing-slash returns empty Output[] for empty prefix", async () => {
   const _route64 = connection(memClient(), ["*"]);
   const rig = new Rig({
     routes: {
@@ -861,8 +864,9 @@ Deno.test("Rig.read - trailing-slash returns empty for empty prefix", async () =
       read: [_route64],
     },
   });
-  const results = await rig.read(["mutable://open/empty-prefix/"]);
-  assertEquals(results.length, 0);
+  const [result] = await rig.read(["mutable://open/empty-prefix/"]);
+  const entries = result?.[1] as Array<[string, unknown]>;
+  assertEquals(entries.length, 0);
 });
 
 // rig.readAll with delete, readAll with pagination, deleteAll — all removed (delete no longer exists)
@@ -971,7 +975,7 @@ Deno.test("Rig.info - empty rig has empty behavior", () => {
 
 // rig.deleteMany() no longer exists — deleteMany missing URIs test removed
 
-Deno.test("Rig.read - trailing-slash empty prefix returns empty", async () => {
+Deno.test("Rig.read - trailing-slash empty prefix returns empty ls", async () => {
   const _route70 = connection(memClient(), ["*"]);
   const rig = new Rig({
     routes: {
@@ -979,8 +983,9 @@ Deno.test("Rig.read - trailing-slash empty prefix returns empty", async () => {
       read: [_route70],
     },
   });
-  const results = await rig.read(["mutable://open/empty-prefix/"]);
-  assertEquals(results.length, 0);
+  const [result] = await rig.read(["mutable://open/empty-prefix/"]);
+  const entries = result?.[1] as Array<[string, unknown]>;
+  assertEquals(entries.length, 0);
 });
 
 Deno.test("Rig.read - trailing-slash returns all items under prefix", async () => {
@@ -995,10 +1000,13 @@ Deno.test("Rig.read - trailing-slash returns all items under prefix", async () =
   await rig.receive([["mutable://open/coll/b", { v: 2 }]]);
   await rig.receive([["mutable://open/coll/c", { v: 3 }]]);
 
-  const results = await rig.read<{ v: number }>(["mutable://open/coll/"]);
-  assertEquals(results.length, 3);
+  const [result] = await rig.read<Array<[string, { v: number }]>>([
+    "mutable://open/coll/",
+  ]);
+  const entries = result?.[1] ?? [];
+  assertEquals(entries.length, 3);
   const data = new Map(
-    results.filter((r) => r?.[1] !== undefined && r[0]).map((
+    entries.filter((r) => r?.[1] !== undefined && r[0]).map((
       r,
     ) => [r[0]!, r![1]]),
   );

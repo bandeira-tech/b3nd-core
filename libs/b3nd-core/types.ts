@@ -51,12 +51,23 @@ export interface StatusResult {
 /**
  * Output — the universal addressed-content primitive: [uri, payload]
  *
- * - uri: identity/address
- * - payload: opaque protocol-defined payload (the framework treats this as
- *   opaque; protocols choose its shape — envelopes, conserved quantities,
- *   ciphertexts, plain values, etc.)
+ * Same tuple shape on both sides of the framework, but the meaning of
+ * the first element depends on direction:
  *
- * A payload of `null` is the wire-level "delete this URI" convention.
+ * - **write** (`receive`, `send`, programs): `uri` is the destination
+ *   address the payload is written under.
+ * - **read** (`read` results): `uri` is the **input url** the caller
+ *   passed — the result echoes it back so callers can pair input to
+ *   output positionally or by lookup. The payload's shape depends on
+ *   the requested `fn`:
+ *     - `fn=read`           → `T | undefined` (undefined = not found)
+ *     - `fn=ls&format=full` → `Output[]` of the entries under the prefix
+ *     - `fn=ls&format=uris` → `string[]` — flat list of entry uris
+ *     - `fn=count`          → `number`
+ *     - `fn=x-…`            → provider-defined
+ *
+ * A payload of `null` is the wire-level "delete this URI" convention
+ * (only meaningful on the write side).
  */
 export type Output<T = unknown> = [
   uri: string,
@@ -72,13 +83,13 @@ export type Message<D = unknown> = Output<D>;
  * Read function for storage lookups.
  *
  * Single-url convenience used by program authors — wraps
- * `read([url])[0]`. Returns `undefined` when the read produced no
- * Output for that url (i.e. "not found" under option-A absence
- * semantics).
+ * `read([url])[0]`. Because `read` is 1:1 with its input, the tuple is
+ * always present; the payload is `undefined` when the read produced
+ * no value (i.e. "not found" under option-A absence semantics).
  */
 export type ReadFn = <T = unknown>(
   url: string,
-) => Promise<Output<T> | undefined>;
+) => Promise<Output<T | undefined>>;
 
 /**
  * Receive function — batch of messages through the rig pipeline.
@@ -177,54 +188,53 @@ export interface ProtocolInterfaceNode {
   /**
    * Read a batch of urls. A url is a uri plus a query string of read
    * parameters (`fn`, `limit`, `page`, `format`, `x-*` extensions, ...).
-   * See `./url.ts` for the grammar and helpers.
+   * See `./url.ts` for the grammar.
    *
-   * Returns a flat array of `Output` tuples — `[uri, payload]` — in
-   * input order. `fn=ls` expands one input into many `Output`s; `fn=read`
-   * produces zero or one (zero = "not found"); `fn=count` produces
-   * exactly one with a synthetic `b3nd://count/<uri>` address and a
-   * `number` payload. `x-*` is provider-defined; portable consumers
-   * filter results by uri.
+   * **Shape: 1:1 with input.** Returns one `Output<T>` per input url,
+   * in input order. Each output is `[inputUrl, payload]` — the first
+   * element echoes the caller's url so results are addressable
+   * positionally or by lookup. The payload's type depends on the
+   * requested `fn`:
+   *  - `fn=read`           → `T | undefined` (undefined = not found)
+   *  - `fn=ls&format=full` → `Output<T>[]` of the entries under the
+   *                          prefix (each `[entry-uri, data]`)
+   *  - `fn=ls&format=uris` → `string[]` — flat list of entry uris
+   *  - `fn=count`          → `number`
+   *  - `fn=x-…`            → provider-defined
    *
    * **Errors** (option A):
    *  - Transport / programmer errors throw (network down, malformed
    *    url, unknown `fn`, no route accepts).
-   *  - "Not found" surfaces as absence — the requested uri simply
-   *    does not appear in the result.
+   *  - "Not found" surfaces as a payload of `undefined` on the
+   *    matching slot (or an empty inner array for `fn=ls`).
    *  - Domain-level errors (auth, etc.) are protocol-encoded in the
    *    payload — the framework does not interpret them.
    *
-   * Synthetic results live under `b3nd://`. The framework reserves
-   * the namespace; protocols can add sub-paths freely.
-   *
    * @example
    * ```ts
-   * import { count, listUris } from "@bandeira-tech/b3nd-core/url";
-   * const outputs = await pin.read([
+   * const [profile, total, posts] = await pin.read([
    *   "mutable://users/alice",
-   *   count("mutable://users/alice/posts/"),
-   *   listUris("mutable://users/alice/posts/", { limit: 12 }),
+   *   "mutable://users/alice/posts/?fn=count",
+   *   "mutable://users/alice/posts/?format=uris&limit=12",
    * ]);
-   * // outputs = [
-   * //   ["mutable://users/alice", { name: "Alice" }],
-   * //   ["b3nd://count/mutable://users/alice/posts/", 42],
-   * //   ["mutable://users/alice/posts/p1", undefined],
-   * //   ...
-   * // ]
+   * profile[1]; // { name: "Alice" } | undefined
+   * total[1];   // 4127
+   * posts[1];   // ["mutable://users/alice/posts/p1", ...]
    * ```
    */
   read<T = unknown>(urls: string[]): Promise<Output<T>[]>;
 
   /**
    * Observe a batch of urls. Yields `Output<string[]>` packages —
-   * INV-style bundles of uris that changed under a watched routing
-   * key. The observer reads each uri to learn its current state.
+   * INV-style bundles of uris that changed under a watched pattern.
+   * The observer reads each uri to learn its current state.
    *
-   * Each yielded `Output` is `[meta, uris]` where `meta` is a
-   * synthetic `b3nd://observe` (or `b3nd://observe/<id>`) address and
-   * `uris` is the list of uris that fired in this batch. Backends
-   * may emit one uri per package or batch many — the consumer
-   * iterates either way.
+   * Each yielded `Output` is `[inputUrl, uris]` where `inputUrl` is
+   * one of the caller's subscription urls — the one whose pattern
+   * matched the change — and `uris` is the list of uris that fired
+   * in this batch. A single change matching multiple subscription
+   * urls yields once per matching url. Backends may emit one uri per
+   * package or batch many — the consumer iterates either way.
    *
    * The `signal` controls lifecycle — abort to stop observing.
    *
@@ -328,8 +338,8 @@ export interface Store {
   write(entries: StoreEntry[]): Promise<StoreWriteResult[]>;
 
   /**
-   * Read a batch of urls. Returns flat `Output[]`. See
-   * `ProtocolInterfaceNode.read` for the full contract — `Store.read`
+   * Read a batch of urls. Returns `Output[]` 1:1 with input urls.
+   * See `ProtocolInterfaceNode.read` for the full contract — `Store.read`
    * follows the same semantics.
    */
   read<T = unknown>(urls: string[]): Promise<Output<T>[]>;

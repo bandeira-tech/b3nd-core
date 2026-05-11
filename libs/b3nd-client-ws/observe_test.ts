@@ -17,9 +17,10 @@
  *     `{ id, type: "observe", payload: { urls: string[] } }`
  *
  *   Event push (server → client, repeated):
- *     `{ id, success: true, data: [metaUri, uris] }`
- *     where `data` is an `Output<string[]>` package — `metaUri` is
- *     `b3nd://observe` and `uris` is the list of changed uris.
+ *     `{ id, success: true, data: [inputUrl, uris] }`
+ *     where `data` is an `Output<string[]>` package — `inputUrl` is
+ *     one of the caller's subscription urls (the one whose pattern
+ *     matched) and `uris` is the list of changed uris.
  *
  *   End-of-stream (server → client, optional):
  *     `{ id, success: true, data: null }`
@@ -30,7 +31,6 @@
 
 import { assertEquals } from "@std/assert";
 import { WebSocketClient } from "./mod.ts";
-import { OBSERVE_URI } from "../b3nd-core/url.ts";
 
 interface ObserveSub {
   id: string;
@@ -92,12 +92,15 @@ class ObserveMockWebSocket {
         id,
         urls,
         push: (uris) => {
+          // Tag the package with the first subscription url — the
+          // real server would pick the matching pattern; this mock
+          // doesn't actually match, so the first url is sufficient.
           this.dispatchEvent({
             type: "message",
             data: JSON.stringify({
               id,
               success: true,
-              data: [OBSERVE_URI, uris],
+              data: [urls[0], uris],
             }),
           });
         },

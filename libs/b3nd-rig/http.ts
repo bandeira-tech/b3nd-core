@@ -270,12 +270,16 @@ export function httpApi(
           subscribers.add(sub);
 
           // Send backlog of uris under the prefix as INV events. The
-          // observer reads each uri to learn its current state.
+          // observer reads each uri to learn its current state. The
+          // ls payload is `Output[]`; iterate its first elements.
           (async () => {
             try {
               const listUri = uri.endsWith("/") ? uri : `${uri}/`;
-              const outputs = await rig.read([listUri]);
-              for (const [outUri] of outputs) {
+              const [result] = await rig.read<Array<[string, unknown]>>([
+                listUri,
+              ]);
+              const entries = result?.[1] ?? [];
+              for (const [outUri] of entries) {
                 if (sub.closed) break;
                 const now = Date.now();
                 sub.write(

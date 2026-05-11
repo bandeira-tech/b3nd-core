@@ -8,6 +8,7 @@
 import { assertEquals } from "@std/assert";
 import { FunctionalClient } from "./functional-client.ts";
 import type { Message, Output } from "./types.ts";
+import { parseUrl } from "./url.ts";
 
 // ============================================================================
 // Default behavior (no config functions provided)
@@ -134,12 +135,11 @@ Deno.test("FunctionalClient - works as in-memory store", async () => {
     },
     read: <T = unknown>(urls: string[]): Promise<Output<T>[]> => {
       const out: Output<T>[] = [];
-      for (const uri of urls) {
-        if (uri.endsWith("/")) {
-          // ls under prefix
-          const prefix = uri;
+      for (const url of urls) {
+        const { uri, fn } = parseUrl(url);
+        if (fn === "ls") {
           for (const [k, v] of store.entries()) {
-            if (k.startsWith(prefix)) out.push([k, v as T]);
+            if (k.startsWith(uri)) out.push([k, v as T]);
           }
         } else {
           if (store.has(uri)) out.push([uri, store.get(uri) as T]);

@@ -10,12 +10,11 @@
 
 import { assertEquals } from "@std/assert";
 import { HttpClient } from "./mod.ts";
-import { x } from "../b3nd-core/url.ts";
+import { buildUrl, parseUrl } from "../b3nd-core/url.ts";
 import { FunctionalClient } from "../b3nd-core/functional-client.ts";
 import { connection } from "../b3nd-rig/connection.ts";
 import { httpApi } from "../b3nd-rig/http.ts";
 import { Rig } from "../b3nd-rig/rig.ts";
-import { parseUrl } from "../b3nd-core/url.ts";
 import type { Output } from "../b3nd-core/types.ts";
 
 Deno.test("HTTP - x-* extension round-trip", async () => {
@@ -45,8 +44,10 @@ Deno.test("HTTP - x-* extension round-trip", async () => {
   try {
     const client = new HttpClient({ url: `http://127.0.0.1:${port}` });
 
-    const url = x("mutable://things/", "x-test.scan", {
-      limit: 50,
+    const url = buildUrl({
+      uri: "mutable://things/",
+      fn: "x-test.scan",
+      params: { limit: 50 },
       ext: { "x-test.cursor": "abc123", "x-test.where": "active=true" },
     });
 

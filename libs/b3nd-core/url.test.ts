@@ -1,19 +1,12 @@
 /**
- * URL grammar tests — parse/build round-trip, defaults, helpers.
+ * URL grammar tests — parse/build round-trip, structural fields,
+ * defaults, and error handling.
  */
 
 import { assertEquals, assertThrows } from "@std/assert";
-import {
-  buildUrl,
-  count,
-  list,
-  listUris,
-  parseUrl,
-  routingKey,
-  x,
-} from "./url.ts";
+import { buildUrl, parseUrl, routingKey } from "./url.ts";
 
-// ── parseUrl ────────────────────────────────────────────────────────
+// ── parseUrl: fn dispatch ──────────────────────────────────────────
 
 Deno.test("parseUrl - bare uri without slash defaults to fn=read", () => {
   const p = parseUrl("mutable://open/users/alice");
@@ -40,6 +33,55 @@ Deno.test("parseUrl - explicit fn=read on trailing-slash uri", () => {
   assertEquals(p.fn, "read");
   assertEquals(p.uri, "mutable://open/users/");
 });
+
+Deno.test("parseUrl - x-* fn name passes through", () => {
+  const p = parseUrl("m://x?fn=x-pg.scan");
+  assertEquals(p.fn, "x-pg.scan");
+});
+
+// ── parseUrl: structural fields ────────────────────────────────────
+
+Deno.test("parseUrl - exposes protocol/hostname/path/program", () => {
+  const p = parseUrl("mutable://users/alice/posts/?fn=count");
+  assertEquals(p.protocol, "mutable");
+  assertEquals(p.hostname, "users");
+  assertEquals(p.path, "/alice/posts/");
+  assertEquals(p.program, "mutable://users");
+  assertEquals(p.uri, "mutable://users/alice/posts/");
+});
+
+Deno.test("parseUrl - hostname-only uri has empty path", () => {
+  const p = parseUrl("m://x");
+  assertEquals(p.protocol, "m");
+  assertEquals(p.hostname, "x");
+  assertEquals(p.path, "");
+  assertEquals(p.program, "m://x");
+});
+
+Deno.test("parseUrl - hostname + slash gives path=/", () => {
+  const p = parseUrl("m://x/");
+  assertEquals(p.hostname, "x");
+  assertEquals(p.path, "/");
+});
+
+Deno.test("parseUrl - synthetic uri keeps embedded :// inside path", () => {
+  const p = parseUrl("b3nd://count/mutable://users/");
+  assertEquals(p.protocol, "b3nd");
+  assertEquals(p.hostname, "count");
+  assertEquals(p.path, "/mutable://users/");
+  assertEquals(p.program, "b3nd://count");
+  assertEquals(p.uri, "b3nd://count/mutable://users/");
+});
+
+Deno.test("parseUrl - no scheme yields empty protocol and path=uri", () => {
+  const p = parseUrl("not-a-uri");
+  assertEquals(p.protocol, "");
+  assertEquals(p.hostname, "");
+  assertEquals(p.path, "not-a-uri");
+  assertEquals(p.program, "");
+});
+
+// ── parseUrl: params + ext ─────────────────────────────────────────
 
 Deno.test("parseUrl - standard params coerced", () => {
   const p = parseUrl("m://x/?limit=20&page=3&format=uris&sortBy=timestamp");
@@ -70,11 +112,6 @@ Deno.test("parseUrl - unknown standard param throws", () => {
     Error,
     "Unknown read param: wat",
   );
-});
-
-Deno.test("parseUrl - x-* fn name passes through", () => {
-  const p = parseUrl("m://x?fn=x-pg.scan");
-  assertEquals(p.fn, "x-pg.scan");
 });
 
 // ── buildUrl ────────────────────────────────────────────────────────
@@ -142,68 +179,4 @@ Deno.test("routingKey - strips query", () => {
 Deno.test("routingKey - preserves trailing slash", () => {
   assertEquals(routingKey("m://x/"), "m://x/");
   assertEquals(routingKey("m://x"), "m://x");
-});
-
-// ── helpers ─────────────────────────────────────────────────────────
-
-Deno.test("count - adds trailing slash and fn=count", () => {
-  assertEquals(count("m://x"), "m://x/?fn=count");
-  assertEquals(count("m://x/"), "m://x/?fn=count");
-});
-
-Deno.test("count - passes through params and ext", () => {
-  assertEquals(
-    count("m://x", { pattern: "a*", ext: { "x-pg.shard": "2" } }),
-    "m://x/?fn=count&pattern=a*&x-pg.shard=2",
-  );
-});
-
-Deno.test("list - adds trailing slash, fn=ls (omitted as default), format=full", () => {
-  assertEquals(list("m://x"), "m://x/?format=full");
-  assertEquals(list("m://x/"), "m://x/?format=full");
-});
-
-Deno.test("list - threads limit/page/sort", () => {
-  assertEquals(
-    list("m://x", { limit: 12, page: 2, sortBy: "timestamp" }),
-    "m://x/?format=full&limit=12&page=2&sortBy=timestamp",
-  );
-});
-
-Deno.test("listUris - format=uris", () => {
-  assertEquals(listUris("m://x"), "m://x/?format=uris");
-  assertEquals(
-    listUris("m://x", { limit: 30 }),
-    "m://x/?format=uris&limit=30",
-  );
-});
-
-Deno.test("x - rejects non-x- fn names", () => {
-  assertThrows(() => x("m://x", "scan"), Error, "x() requires fn name");
-});
-
-Deno.test("x - emits provider fn with ext", () => {
-  assertEquals(
-    x("m://x/", "x-pg.scan", { limit: 50, ext: { "x-pg.cursor": "z" } }),
-    "m://x/?fn=x-pg.scan&limit=50&x-pg.cursor=z",
-  );
-});
-
-// ── helper composition ─────────────────────────────────────────────
-
-Deno.test("helpers compose into a read([...]) batch", () => {
-  const urls = [
-    "mutable://users/alice",
-    count("mutable://users/alice/posts/"),
-    listUris("mutable://users/alice/posts/", {
-      limit: 12,
-      sortBy: "timestamp",
-      sortOrder: "desc",
-    }),
-  ];
-  assertEquals(urls, [
-    "mutable://users/alice",
-    "mutable://users/alice/posts/?fn=count",
-    "mutable://users/alice/posts/?format=uris&limit=12&sortBy=timestamp&sortOrder=desc",
-  ]);
 });

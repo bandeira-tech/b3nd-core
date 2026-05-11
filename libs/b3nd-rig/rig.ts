@@ -648,10 +648,11 @@ export class Rig {
   /** Internal read helper bound to the dispatch read interface. */
   private _readFn(): <T = unknown>(
     u: string,
-  ) => Promise<Output<T> | undefined> {
+  ) => Promise<Output<T | undefined>> {
     return async <T = unknown>(u: string) => {
-      const results = await this._dispatch.read<T>([u]);
-      return results[0]; // undefined when absent (option-A)
+      const results = await this._dispatch.read<T | undefined>([u]);
+      // Read is 1:1; the slot is always present, payload may be undefined.
+      return results[0];
     };
   }
 
@@ -945,19 +946,20 @@ function createRouteDispatch(
     },
 
     async read<T = unknown>(urls: string[]): Promise<Output<T>[]> {
-      const out: Output<T>[] = [];
-
-      for (const url of urls) {
+      // 1:1 with input. Each url is routed to its accepting connection;
+      // we ask that connection for that single url and place the
+      // resulting Output<T> in the matching slot.
+      const out: Output<T>[] = new Array(urls.length);
+      await Promise.all(urls.map(async (url, i) => {
         const key = routingKey(url);
         const conn = read.find((s) => s.accepts(key));
         if (!conn) {
           // Programmer error — this rig isn't configured for this url.
           throw new Error(`No read route accepts ${key}`);
         }
-        const part = await conn.client.read<T>([url]);
-        out.push(...part);
-      }
-
+        const [r] = await conn.client.read<T>([url]);
+        out[i] = r;
+      }));
       return out;
     },
 

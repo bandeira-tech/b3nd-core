@@ -15,7 +15,7 @@ import type {
 } from "../b3nd-core/types.ts";
 import { encodeBase64 } from "../b3nd-core/encoding.ts";
 import { decodeBinaryFromJson } from "../b3nd-core/binary.ts";
-import { OBSERVE_URI, routingKey } from "../b3nd-core/url.ts";
+import { routingKey } from "../b3nd-core/url.ts";
 import { openSseStream } from "./sse.ts";
 
 /**
@@ -175,7 +175,7 @@ export class HttpClient implements ProtocolInterfaceNode {
       );
     }
     const body = await response.json() as Output<T>[];
-    // Decode binary payloads embedded in Output payloads.
+    // Decode wire markers (binary + undefined) embedded in payloads.
     for (let i = 0; i < body.length; i++) {
       const [uri, payload] = body[i];
       body[i] = [uri, decodeBinaryFromJson(payload) as T];
@@ -207,14 +207,15 @@ export class HttpClient implements ProtocolInterfaceNode {
         for await (const event of openSseStream(sseUrl, { signal })) {
           if (signal.aborted) return;
           // Each SSE event carries one uri (or several, when the
-          // server batches). Normalize to Output<string[]>.
+          // server batches). Tag the package with the caller's input
+          // url so consumers can route per subscription.
           const uris = Array.isArray(event.uris)
             ? (event.uris as string[])
             : typeof event.uri === "string"
             ? [event.uri]
             : [];
           if (uris.length === 0) continue;
-          queue.push([OBSERVE_URI, uris]);
+          queue.push([url, uris]);
           const w = wake;
           if (w) {
             wake = null;

@@ -102,15 +102,16 @@ export function runSharedSuite(
   });
 
   Deno.test({
-    name: `${suiteName} - read non-existent yields no Output (absence)`,
+    name: `${suiteName} - read non-existent yields undefined payload`,
     ...noSanitize,
     fn: async () => {
       const client = await Promise.resolve(factories.happy());
 
       const readResults = await client.read(["store://users/nobody/profile"]);
 
-      // Option-A: not-found surfaces as absence.
-      assertEquals(readResults.length, 0);
+      // 1:1 with input: slot present, payload undefined on miss.
+      assertEquals(readResults.length, 1);
+      assertEquals(readResults[0]?.[1], undefined);
     },
   });
 
@@ -343,9 +344,11 @@ export function runSharedSuite(
         "store://users/partial-missing/profile",
       ]);
 
-      // 1 hit + 1 miss; option-A absence drops the miss.
-      assertEquals(results.length, 1);
+      // 1:1 with input: 1 hit + 1 miss = 2 slots, miss has undefined payload.
+      assertEquals(results.length, 2);
       assertEquals(results[0]?.[0], "store://users/partial-a/profile");
+      assertEquals(results[0]?.[1], { ok: true });
+      assertEquals(results[1]?.[1], undefined);
     },
   });
 
@@ -364,10 +367,13 @@ export function runSharedSuite(
 
       const results = await client.read([`${prefix}/`]);
 
+      // 1:1: one outer slot. Payload is Output[] of entries under prefix.
+      assertEquals(results.length, 1);
+      const entries = results[0]?.[1] as Array<[string, unknown]>;
       assertEquals(
-        results.length >= 3,
+        entries.length >= 3,
         true,
-        `Should return at least 3 items, got ${results.length}`,
+        `Should return at least 3 items, got ${entries.length}`,
       );
     },
   });

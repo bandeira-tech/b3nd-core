@@ -1,29 +1,41 @@
 /**
- * Mock HTTP Server for testing HttpClient
+ * Mock HTTP Server for testing HttpClient.
  *
- * Provides configurable HTTP server instances that simulate different scenarios:
- * - Happy path (successful operations)
- * - Connection errors (server unreachable)
- * - Validation errors (schema validation failures)
+ * Acts as a wire-format adapter only — receive/read are delegated to a
+ * `MemoryStore`. The mock owns:
+ * - HTTP framing (routes, JSON encode/decode, status codes)
+ * - The binary marker serialization that the real HTTP transport uses
+ *   for `Uint8Array` payloads
+ *
+ * It does not re-implement read/ls/count semantics or answer-address
+ * conventions — that's MemoryStore's job.
+ *
+ * Modes:
+ * - `happy`               — fully functional
+ * - `connectionError`     — server is never started
+ * - `validationError`     — receive always rejects with a fixed error
  */
 
 import { decodeBase64 } from "../b3nd-core/encoding.ts";
+import { encodeBinaryForJson } from "../b3nd-core/binary.ts";
+import { MemoryStore } from "../b3nd-client-memory/store.ts";
 
-/**
- * Deserialize message data from JSON transport.
- * Unwraps base64-encoded binary marker objects back to Uint8Array.
- */
+/** Wire shape used to carry `Uint8Array` through JSON. */
+interface BinaryMarker {
+  __b3nd_binary__: true;
+  encoding: "base64";
+  data: string;
+}
+
+function isBinaryMarker(v: unknown): v is BinaryMarker {
+  return v != null && typeof v === "object" &&
+    (v as Record<string, unknown>).__b3nd_binary__ === true &&
+    (v as Record<string, unknown>).encoding === "base64" &&
+    typeof (v as Record<string, unknown>).data === "string";
+}
+
 function deserializeMsgData(data: unknown): unknown {
-  if (
-    data &&
-    typeof data === "object" &&
-    (data as Record<string, unknown>).__b3nd_binary__ === true &&
-    (data as Record<string, unknown>).encoding === "base64" &&
-    typeof (data as Record<string, unknown>).data === "string"
-  ) {
-    return decodeBase64((data as Record<string, unknown>).data as string);
-  }
-  return data;
+  return isBinaryMarker(data) ? decodeBase64(data.data) : data;
 }
 
 export interface MockServerConfig {
@@ -33,18 +45,18 @@ export interface MockServerConfig {
   /** Behavior mode */
   mode: "happy" | "connectionError" | "validationError";
 
-  /** In-memory storage for happy path */
-  storage?: Map<string, { data: unknown }>;
+  /** Pre-built MemoryStore for sharing state across mocks. */
+  store?: MemoryStore;
 }
 
 export class MockHttpServer {
   private server?: Deno.HttpServer;
   private config: MockServerConfig;
-  private storage: Map<string, { data: unknown }>;
+  private store: MemoryStore;
 
   constructor(config: MockServerConfig) {
     this.config = config;
-    this.storage = config.storage || new Map();
+    this.store = config.store ?? new MemoryStore();
   }
 
   async start(): Promise<void> {
@@ -164,27 +176,27 @@ export class MockHttpServer {
           outputs: unknown[][];
         };
 
-        // Delete inputs
-        for (const inputUri of inputs) {
-          this.storage.delete(inputUri);
+        if (inputs.length > 0) {
+          await this.store.delete(inputs);
         }
 
-        // Write outputs
+        const writeEntries: { uri: string; data: unknown }[] = [];
         for (const output of outputs) {
           if (Array.isArray(output) && output.length >= 2) {
             const [outUri, outPayload] = output;
-            const data = deserializeMsgData(outPayload);
-            this.storage.set(outUri as string, {
-              data,
+            writeEntries.push({
+              uri: outUri as string,
+              data: deserializeMsgData(outPayload),
             });
           }
         }
+        if (writeEntries.length > 0) await this.store.write(writeEntries);
       } else {
         // Direct write — store payload at the message URI
-        const data = deserializeMsgData(msgPayload);
-        this.storage.set(msgUri as string, {
-          data,
-        });
+        await this.store.write([{
+          uri: msgUri as string,
+          data: deserializeMsgData(msgPayload),
+        }]);
       }
 
       results.push({ accepted: true });
@@ -207,57 +219,13 @@ export class MockHttpServer {
         { status: 400 },
       );
     }
-    const out = (urls as string[]).flatMap((url) => this.readOne(url));
-    return Response.json(out);
-  }
-
-  /**
-   * Read one url. Returns flat `Output[]` = `[[uri, payload], ...]`.
-   * Supports the same fn dispatcher as MemoryStore — `read` (default),
-   * `ls`, `count`. Unknown fns throw (caller turns into 500). "Not
-   * found" surfaces as absence (empty array).
-   */
-  private readOne(url: string): unknown[] {
-    const qIdx = url.indexOf("?");
-    const uri = qIdx < 0 ? url : url.slice(0, qIdx);
-    const params = new URLSearchParams(qIdx < 0 ? "" : url.slice(qIdx + 1));
-    const explicit = params.get("fn");
-    const fn = explicit ?? (uri.endsWith("/") ? "ls" : "read");
-
-    if (fn === "read") {
-      const record = this.storage.get(uri);
-      if (!record) return []; // absence = not-found
-      const data = record.data instanceof Uint8Array
-        ? {
-          __b3nd_binary__: true,
-          encoding: "base64",
-          data: this.encodeB64(record.data),
-        }
-        : record.data;
-      return [[uri, data]];
-    }
-    if (fn === "ls") {
-      const prefix = uri.endsWith("/") ? uri : `${uri}/`;
-      const format = params.get("format") ?? "full";
-      return Array.from(this.storage.entries())
-        .filter(([k]) => k.startsWith(prefix))
-        .map(([k, record]) =>
-          format === "uris" ? [k, undefined] : [k, record.data]
-        );
-    }
-    if (fn === "count") {
-      const prefix = uri.endsWith("/") ? uri : `${uri}/`;
-      const n = Array.from(this.storage.keys())
-        .filter((k) => k.startsWith(prefix)).length;
-      return [[`b3nd://count/${uri}`, n]];
-    }
-    throw new Error(`unsupported fn '${fn}'`);
-  }
-
-  private encodeB64(bytes: Uint8Array): string {
-    let s = "";
-    for (let i = 0; i < bytes.length; i++) s += String.fromCharCode(bytes[i]);
-    return btoa(s);
+    const outputs = await this.store.read(urls as string[]);
+    // Server-side wire encoding: walks the payload to encode binary
+    // values as base64 markers and `undefined` as a sentinel so it
+    // survives JSON. Matches the real `httpApi` server.
+    return Response.json(
+      outputs.map(([uri, data]) => [uri, encodeBinaryForJson(data)]),
+    );
   }
 }
 
@@ -269,12 +237,9 @@ export async function createMockServers(): Promise<{
   validationError: MockHttpServer;
   cleanup: () => Promise<void>;
 }> {
-  const sharedStorage = new Map<string, { data: unknown }>();
-
   const happy = new MockHttpServer({
     port: 8765,
     mode: "happy",
-    storage: sharedStorage,
   });
 
   const validationError = new MockHttpServer({

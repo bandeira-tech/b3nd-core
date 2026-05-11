@@ -4,16 +4,18 @@ Real-world flows expressed as `pin.read([…])` batches. The patterns here use
 Instagram as an example app, but the shapes apply to any content-addressed
 system.
 
-> **Shape recap.** `pin.read(urls)` returns flat `Output[]` — `[uri, payload]`
-> tuples. "Not found" surfaces as absence (no Output). Synthetic answers (count
-> results, observe envelopes, cursors) live under the reserved `b3nd://`
-> namespace.
+> **Shape recap.** `pin.read(urls)` returns `Output[]` **1:1 with input urls**:
+> one `[inputUrl, payload]` slot per request. The payload shape depends on the
+> requested `fn`:
 >
-> Helpers used in the snippets:
+> - `fn=read` → `T | undefined` (undefined = not found)
+> - `fn=ls&format=full` → `Output<T>[]` (entries under the prefix)
+> - `fn=ls&format=uris` → `string[]` (flat list of entry uris)
+> - `fn=count` → `number`
+> - `fn=x-…` → provider-defined
 >
-> ```ts
-> import { count, list, listUris, x } from "@bandeira-tech/b3nd-core/url";
-> ```
+> The url grammar is `<uri>[?fn=…&param=value…]`. Trailing slash defaults to
+> `fn=ls`. Write urls inline — there are no builders to import.
 
 ---
 
@@ -21,53 +23,45 @@ system.
 
 User taps `@alice`. The screen needs the profile blob, the post-count badge, and
 the first 12 thumbnail uris (the grid resolves them lazily). Three intents, one
-round-trip:
+round-trip — positional destructuring matches input order:
 
 ```ts
-const [profile, total, ...grid] = await pin.read([
+const [profile, total, grid] = await pin.read([
   "instagram://users/alice",
-  count("instagram://users/alice/posts/"),
-  listUris("instagram://users/alice/posts/", {
-    limit: 12,
-    sortBy: "timestamp",
-    sortOrder: "desc",
-  }),
+  "instagram://users/alice/posts/?fn=count",
+  "instagram://users/alice/posts/?format=uris&limit=12&sortBy=timestamp&sortOrder=desc",
 ]);
 
-profile?.[1]; // { name, avatar, … }
-total?.[1]; // 4127  — addressed at "b3nd://count/instagram://users/alice/posts/"
-grid.map((r) => r[0]); // ["instagram://users/alice/posts/p1", …]
+profile?.[1]; // { name, avatar, … } | undefined
+total?.[1]; // 4127  — payload is the count, addressed under the request url
+const uris = grid?.[1] as string[];
+uris; // ["instagram://users/alice/posts/p1", …]
 ```
 
-Why this is good: the underlying transport sees one POST. The grid items came
-back as uris with no payloads — the thumbnails fetch themselves when they enter
-the viewport.
+Why this is good: the underlying transport sees one POST. The grid's payload is
+a flat list of uris (`format=uris`) — no inner tuples to unwrap. The viewport
+fetches each uri when needed.
 
 ---
 
 ## Comments tab with per-comment reply counts
 
 Open post `p123`, page 1 of comments (20 newest), plus a "View replies (N)"
-badge per comment. The reply counts are heterogeneous — different prefixes, all
-counts.
+badge per comment.
 
 ```ts
 // First batch: total + page of comments (one round-trip).
-// `count` produces one Output; `list` expands inline to N items —
-// destructure: total = the count Output, page = the ls items.
-const [total, ...page] = await pin.read([
-  count("instagram://posts/p123/comments/"),
-  list("instagram://posts/p123/comments/", {
-    limit: 20,
-    page: 1,
-    sortBy: "timestamp",
-    sortOrder: "desc",
-  }),
+const [totalOut, pageOut] = await pin.read([
+  "instagram://posts/p123/comments/?fn=count",
+  "instagram://posts/p123/comments/?limit=20&page=1&sortBy=timestamp&sortOrder=desc",
 ]);
+
+const total = totalOut?.[1] as number;
+const page = (pageOut?.[1] ?? []) as Array<[string, unknown]>;
 
 // Second batch: a count per comment, all in one round-trip.
 const counts = await pin.read(
-  page.map(([uri]) => count(`${uri}/replies/`)),
+  page.map(([uri]) => `${uri}/replies/?fn=count`),
 );
 
 const replies = Object.fromEntries(
@@ -84,25 +78,33 @@ const replies = Object.fromEntries(
 exposes a custom `x-feed.rank` function with a cursor extension.
 
 ```ts
-// Page 1.
-const page1 = await pin.read([
-  x("instagram://hashtags/coffee/", "x-feed.rank", {
-    limit: 30,
+import { buildUrl } from "@bandeira-tech/b3nd-core/url";
+
+// Page 1. `fn=x-feed.rank` returns its provider-defined payload —
+// here, the backend chooses `Output[]` with feed items plus a cursor
+// item under its own b3nd:// namespace.
+const [page1Out] = await pin.read([
+  buildUrl({
+    uri: "instagram://hashtags/coffee/",
+    fn: "x-feed.rank",
+    params: { limit: 30 },
     ext: { "x-feed.algo": "engagement" },
   }),
 ]);
+const page1 = (page1Out?.[1] ?? []) as Array<[string, unknown]>;
 
-// The backend returns its data Outputs plus a synthetic cursor Output
-// addressed under its own b3nd:// namespace. Find it by uri prefix.
+// Find the cursor item by uri prefix.
 const cursorOut = page1.find(([uri]) =>
   uri.startsWith("b3nd://x-feed/cursor/")
 );
 const cursor = cursorOut?.[1] as string | undefined;
 
 // Page 2.
-const page2 = await pin.read([
-  x("instagram://hashtags/coffee/", "x-feed.rank", {
-    limit: 30,
+const [page2Out] = await pin.read([
+  buildUrl({
+    uri: "instagram://hashtags/coffee/",
+    fn: "x-feed.rank",
+    params: { limit: 30 },
     ext: {
       "x-feed.algo": "engagement",
       ...(cursor ? { "x-feed.cursor": cursor } : {}),
@@ -118,8 +120,10 @@ The cursor lives in the url, which means a deep-linkable feed page just works:
 
 ## Watch a uri for changes
 
-Observe yields `Output<string[]>` packages — `[meta, uris]` — INV-style. Iterate
-the inner uris and read each:
+Observe yields `Output<string[]>` packages — `[inputUrl, uris]` — INV-style. The
+first element echoes the subscription url that matched (so a single
+`observe([a, b])` call can dispatch by `a` vs `b`); the second is the list of
+uris that fired in this batch.
 
 ```ts
 const ac = new AbortController();
@@ -127,7 +131,7 @@ for await (
   const [, uris] of pin.observe(["instagram://posts/p123/likes/*"], ac.signal)
 ) {
   // The likes prefix changed; recompute the count.
-  const [c] = await pin.read([count("instagram://posts/p123/likes/")]);
+  const [c] = await pin.read(["instagram://posts/p123/likes/?fn=count"]);
   ui.setLikeCount(c?.[1] as number);
 }
 ```

@@ -30,7 +30,7 @@ import type {
   StoreWriteResult,
 } from "../b3nd-core/types.ts";
 import type { ParsedUrl } from "../b3nd-core/url.ts";
-import { countUri, parseUrl } from "../b3nd-core/url.ts";
+import { parseUrl } from "../b3nd-core/url.ts";
 
 type StorageNode<T = unknown> = {
   value?: { data: T };
@@ -113,33 +113,25 @@ export class MemoryStore implements Store {
   // ── Read ─────────────────────────────────────────────────────────
 
   read<T = unknown>(urls: string[]): Promise<Output<T>[]> {
-    const out: Output<T>[] = [];
-
-    for (const url of urls) {
+    // 1:1 with input urls. Each output is [inputUrl, payload]; payload
+    // shape varies by fn (see ProtocolInterfaceNode.read docs).
+    const out: Output<T>[] = urls.map((url) => {
       const parsed = parseUrl(url);
       switch (parsed.fn) {
-        case "read": {
-          const found = this._readOne<T>(parsed.uri);
-          // Option-A: "not found" surfaces as absence (no Output).
-          if (found !== undefined) out.push(found);
-          break;
-        }
+        case "read":
+          return [url, this._readOne<T>(parsed.uri) as T];
         case "ls":
-          out.push(...this._list<T>(parsed));
-          break;
+          return [url, this._list<T>(parsed) as unknown as T];
         case "count":
-          out.push(this._count(parsed) as unknown as Output<T>);
-          break;
+          return [url, this._count(parsed) as unknown as T];
         default:
-          // Programmer error — unknown fn is not a domain "not found".
           throw new Error(`MemoryStore: unsupported fn '${parsed.fn}'`);
       }
-    }
-
+    });
     return Promise.resolve(out);
   }
 
-  private _readOne<T>(uri: string): Output<T> | undefined {
+  private _readOne<T>(uri: string): T | undefined {
     const { parts, node } = resolveTarget(uri, this.storage);
     if (!node) return undefined;
 
@@ -150,7 +142,7 @@ export class MemoryStore implements Store {
     }
 
     if (!current.value) return undefined;
-    return [uri, (current.value as { data: T }).data];
+    return (current.value as { data: T }).data;
   }
 
   /**
@@ -198,7 +190,7 @@ export class MemoryStore implements Store {
     return out;
   }
 
-  private _list<T>(parsed: ParsedUrl): Output<T>[] {
+  private _list<T>(parsed: ParsedUrl): Output<T>[] | string[] {
     const { params } = parsed;
 
     // Programmer errors: unsupported params throw — option-A reserves
@@ -227,18 +219,19 @@ export class MemoryStore implements Store {
       entries = entries.slice(start, start + params.limit);
     }
 
+    // `format=uris` flattens to a uri list — no inner tuples, no
+    // undefined payloads. `format=full` keeps `Output<T>[]`.
     if (format === "uris") {
-      return entries.map(([uri]) => [uri, undefined as T]);
+      return entries.map(([uri]) => uri);
     }
     return entries as Output<T>[];
   }
 
-  private _count(parsed: ParsedUrl): Output<number> {
+  private _count(parsed: ParsedUrl): number {
     if (parsed.params.pattern !== undefined) {
       throw new Error("MemoryStore: pattern filter not supported");
     }
-    const n = this._walk(parsed.uri).length;
-    return [countUri(parsed.uri), n];
+    return this._walk(parsed.uri).length;
   }
 
   // ── Delete ───────────────────────────────────────────────────────

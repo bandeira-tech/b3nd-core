@@ -1,6 +1,12 @@
 /**
  * @module
- * URL grammar for read/observe.
+ * URL grammar for read/observe — the single source of truth for
+ * parsing and constructing b3nd urls.
+ *
+ * **Everything that handles a b3nd url should go through this module.**
+ * Nothing else in the codebase (or in downstream backends, transports,
+ * tests, or sugar packages) should re-implement query-string splitting,
+ * fn detection, or protocol/hostname extraction.
  *
  * A **url** = a uri (the protocol-defined address) plus a query string of
  * read parameters. The uri is the identity used for routing, caching, and
@@ -21,37 +27,15 @@
  * `limit`, `page`, `cursor`, `sortBy`, `sortOrder`, `pattern`, `format`.
  *
  * Anything matching `x-<ns>.<key>` lands in the `ext` map and is passed
- * opaquely to the executing client.
+ * opaquely to the executing client. Callers inspect ext entries by their
+ * flat string key (e.g. `ext["x-feed.cursor"]`).
+ *
+ * The core only owns parsing + serialization. Synthetic answer addresses
+ * (e.g. `b3nd://count/<uri>`, observe envelopes) are a store/canon
+ * concern — each backend defines and documents its own conventions.
  */
 
-/**
- * Reserved built-in fn names. Anything else is provider-defined and
- * conventionally namespaced as `x-<ns>.<name>`.
- */
-export const RESERVED_FNS = ["read", "ls", "count"] as const;
-export type ReservedFn = typeof RESERVED_FNS[number];
-
-/**
- * Synthetic-content namespace. The framework reserves `b3nd://` for
- * any uri it has to invent — `fn=count` answers, observe-batch
- * envelopes, cursors, errors, etc. There is no schema beyond the
- * namespace rule; protocols are free to add sub-paths.
- */
-export const SYNTHETIC_NS = "b3nd://";
-
-/**
- * Build the synthetic uri the executing client uses as the address of
- * a `fn=count` answer. The original request uri is preserved as the
- * tail so the answer is self-describing.
- */
-export const countUri = (uri: string): string => `${SYNTHETIC_NS}count/${uri}`;
-
-/**
- * Default synthetic uri for `observe` notification packages. Backends
- * may add `/<id>` or `/<pattern>` if they want to disambiguate
- * subscriptions.
- */
-export const OBSERVE_URI: string = `${SYNTHETIC_NS}observe`;
+// ── Read params + parsed url shape ──────────────────────────────────
 
 /**
  * Standard read parameters. All are optional; clients interpret the
@@ -70,23 +54,35 @@ export interface ReadParams {
 /**
  * A parsed url decomposed into routing identity (`uri`), function
  * (`fn`), standard read parameters (`params`), and the `x-*` extension
- * bag (`ext`).
+ * bag (`ext`), plus the structural fields shared with WHATWG URL
+ * (`protocol`, `hostname`, `path`, `program`).
  */
 export interface ParsedUrl {
+  /** Scheme without trailing `://` (e.g. `"mutable"`, `"b3nd"`). */
+  protocol: string;
+  /** Authority segment after `protocol://` (may be empty). */
+  hostname: string;
+  /** Everything after `protocol://<hostname>`. Empty or starts with `/`. */
+  path: string;
+  /** `protocol://hostname` — the routing root above the path. */
+  program: string;
+  /** Full routing identity: `program` + `path`. Query is stripped. */
   uri: string;
+  /** Reserved fn (`read`/`ls`/`count`) or `x-<ns>.<name>` extension. */
   fn: string;
+  /** Standard read params (numeric ones coerced). */
   params: ReadParams;
+  /** Bag of `x-*` extension query params (every key starts with `x-`). */
   ext: Record<string, string>;
 }
 
 /**
- * Options accepted by the read-url helpers (`count`, `list`, ...).
- * Standard `ReadParams` plus an `ext` bag for `x-*` extensions.
- */
-export type ReadOpts = ReadParams & { ext?: Record<string, string> };
-
-/**
- * Parse a url into its identity, function, params, and extensions.
+ * Parse a url into its structural fields, function, params, and extensions.
+ *
+ * Splitting rule: first `://` separates protocol from the rest; the first
+ * `/` in the rest separates hostname from path. Embedded `://` in the path
+ * (e.g. `b3nd://count/mutable://users/`) stays inside `path` — no
+ * special-casing.
  *
  * Defaults:
  * - `fn=read` for uris without a trailing slash
@@ -98,6 +94,26 @@ export function parseUrl(url: string): ParsedUrl {
   const qIdx = url.indexOf("?");
   const uri = qIdx < 0 ? url : url.slice(0, qIdx);
   const query = qIdx < 0 ? "" : url.slice(qIdx + 1);
+
+  const schemeIdx = uri.indexOf("://");
+  let protocol = "";
+  let hostname = "";
+  let path = "";
+  if (schemeIdx >= 0) {
+    protocol = uri.slice(0, schemeIdx);
+    const rest = uri.slice(schemeIdx + 3);
+    const slash = rest.indexOf("/");
+    if (slash < 0) {
+      hostname = rest;
+      path = "";
+    } else {
+      hostname = rest.slice(0, slash);
+      path = rest.slice(slash);
+    }
+  } else {
+    path = uri;
+  }
+  const program = protocol ? `${protocol}://${hostname}` : "";
 
   const sp = new URLSearchParams(query);
   const explicitFn = sp.get("fn") ?? undefined;
@@ -135,11 +151,13 @@ export function parseUrl(url: string): ParsedUrl {
     }
   }
 
-  return { uri, fn, params, ext };
+  return { protocol, hostname, path, program, uri, fn, params, ext };
 }
 
 /**
- * Serialize a parsed url back to its string form.
+ * Serialize a parsed url back to its string form. Authoritative input is
+ * `uri`; structural fields (`protocol`/`hostname`/`path`/`program`) are
+ * ignored on serialization since `uri` already contains them.
  *
  * Omits `fn=` when it matches the trailing-slash default. Throws if any
  * `ext` key does not start with `x-`.
@@ -182,63 +200,4 @@ export function buildUrl(parsed: {
 export function routingKey(url: string): string {
   const qIdx = url.indexOf("?");
   return qIdx < 0 ? url : url.slice(0, qIdx);
-}
-
-// ── Helpers ────────────────────────────────────────────────────────
-// Compose at call sites: `pin.read([count(uri), list(uri, {limit: 20})])`.
-
-function withTrailingSlash(uri: string): string {
-  return uri.endsWith("/") ? uri : `${uri}/`;
-}
-
-/**
- * Build a `fn=count` url. Ensures a trailing slash on the uri.
- */
-export function count(uri: string, opts?: ReadOpts): string {
-  const { ext, ...params } = opts ?? {};
-  return buildUrl({ uri: withTrailingSlash(uri), fn: "count", params, ext });
-}
-
-/**
- * Build a `fn=ls&format=full` url. Ensures a trailing slash on the uri.
- * Returns full records by default; use `listUris` for uri-only listings.
- */
-export function list(uri: string, opts?: ReadOpts): string {
-  const { ext, ...params } = opts ?? {};
-  return buildUrl({
-    uri: withTrailingSlash(uri),
-    fn: "ls",
-    params: { format: "full", ...params },
-    ext,
-  });
-}
-
-/**
- * Build a `fn=ls&format=uris` url. Ensures a trailing slash on the uri.
- * Records are omitted from the response; only `uri` is set on each item.
- */
-export function listUris(uri: string, opts?: ReadOpts): string {
-  const { ext, ...params } = opts ?? {};
-  return buildUrl({
-    uri: withTrailingSlash(uri),
-    fn: "ls",
-    params: { format: "uris", ...params },
-    ext,
-  });
-}
-
-/**
- * Build a url for a provider-defined `x-*` function.
- * Throws if `fnName` does not start with `x-`.
- */
-export function x(
-  uri: string,
-  fnName: string,
-  opts?: ReadOpts,
-): string {
-  if (!fnName.startsWith("x-")) {
-    throw new Error(`x() requires fn name starting with 'x-': ${fnName}`);
-  }
-  const { ext, ...params } = opts ?? {};
-  return buildUrl({ uri, fn: fnName, params, ext });
 }

@@ -4,10 +4,12 @@
  * clients (SimpleClient, DataStoreClient) to expose `observe()`.
  *
  * Observe is INV-style notification: each successful write or delete
- * yields an `Output<string[]>` — `[meta, uris]` — where `meta` is a
- * synthetic `b3nd://observe` address and `uris` is the package of
- * uris that fired in this batch. The default emitter sends one uri
- * per package; backends with cheap batching can send several.
+ * yields an `Output<string[]>` — `[inputUrl, uris]` — where `inputUrl`
+ * is the caller's pattern url that matched and `uris` is the package
+ * of uris that fired in this batch. The default emitter sends one uri
+ * per package; backends with cheap batching can send several. A single
+ * write that matches several input patterns yields one package per
+ * matching pattern, so callers can route on the meta uri.
  *
  * `observe(urls, signal)` accepts the read-url grammar but only uses
  * each url's routing key (the uri portion) for pattern matching. The
@@ -15,7 +17,7 @@
  */
 import { matchPattern } from "./match-pattern.ts";
 import type { Output } from "./types.ts";
-import { OBSERVE_URI, routingKey } from "./url.ts";
+import { routingKey } from "./url.ts";
 
 export type ObserveListener = (
   uri: string,
@@ -73,14 +75,23 @@ export class ObserveEmitter {
     urls: string[],
     signal: AbortSignal,
   ): AsyncIterable<Output<string[]>> {
-    const patterns = urls.map((u) => routingKey(u).split("/"));
+    // Pair each input url with its segmented routing key so we can
+    // report which pattern matched on each yield.
+    const patterns = urls.map(
+      (u) => [u, routingKey(u).split("/")] as const,
+    );
     const queue: Output<string[]>[] = [];
     let wake: (() => void) | null = null;
 
     const listener: ObserveListener = (uri, _data) => {
-      const matched = patterns.some((segs) => matchPattern(segs, uri) !== null);
-      if (matched) {
-        queue.push([OBSERVE_URI, [uri]]);
+      let pushed = false;
+      for (const [inputUrl, segs] of patterns) {
+        if (matchPattern(segs, uri) !== null) {
+          queue.push([inputUrl, [uri]]);
+          pushed = true;
+        }
+      }
+      if (pushed) {
         const w = wake;
         if (w) {
           wake = null;
