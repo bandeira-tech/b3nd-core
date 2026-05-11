@@ -395,7 +395,7 @@ export function runSharedSuite(
 
   // Wire-level content preservation (undefined, binary, etc.) is not a
   // framework or transport contract. Callers opt in to content codecs
-  // (e.g. `@bandeira-tech/b3nd-core/binary`) at their own layer if
+  // (e.g. `@bandeira-tech/b3nd-canon/binary`) at their own layer if
   // they need specific guarantees. No shared-suite content tests.
 
   // ── Overwrite ───────────────────────────────────────────────────────

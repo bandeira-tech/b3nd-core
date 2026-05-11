@@ -1,8 +1,7 @@
 /**
  * Types & Errors Test Suite
  *
- * Tests for ErrorCode, Errors factory, ClientError. Binary lib has its
- * own test file at libs/b3nd-binary/mod.test.ts.
+ * Tests for ErrorCode, Errors factory, ClientError.
  */
 
 import { assertEquals, assertInstanceOf } from "@std/assert";

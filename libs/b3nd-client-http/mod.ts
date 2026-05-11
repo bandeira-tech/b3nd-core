@@ -147,7 +147,7 @@ export class HttpClient implements ProtocolInterfaceNode {
     // Payloads pass through as JSON-parsed values. Content semantics
     // (miss representation, binary encoding, etc.) are the caller's
     // concern — opt in via content codecs like
-    // `@bandeira-tech/b3nd-core/binary` if you need them.
+    // `@bandeira-tech/b3nd-canon/binary` if you need them.
     return await response.json() as Output<T>[];
   }
 
