@@ -1,15 +1,29 @@
 /**
- * URL grammar tests — parse/build round-trip, defaults, helpers.
+ * URL grammar tests — parse/build round-trip, defaults, helpers,
+ * guards, and synthetic-uri inspectors.
  */
 
 import { assertEquals, assertThrows } from "@std/assert";
 import {
+  buildExtKey,
   buildUrl,
   count,
+  countUri,
+  isCountUri,
+  isExtensionFn,
+  isExtKey,
+  isObserveUri,
+  isReservedFn,
+  isSyntheticUri,
   list,
   listUris,
+  OBSERVE_URI,
+  parseCountUri,
+  parseExtKey,
+  parseSyntheticUri,
   parseUrl,
   routingKey,
+  SYNTHETIC_NS,
   x,
 } from "./url.ts";
 
@@ -190,6 +204,98 @@ Deno.test("x - emits provider fn with ext", () => {
 });
 
 // ── helper composition ─────────────────────────────────────────────
+
+// ── fn guards ──────────────────────────────────────────────────────
+
+Deno.test("isReservedFn - recognizes the three built-ins", () => {
+  assertEquals(isReservedFn("read"), true);
+  assertEquals(isReservedFn("ls"), true);
+  assertEquals(isReservedFn("count"), true);
+  assertEquals(isReservedFn("x-pg.scan"), false);
+  assertEquals(isReservedFn("anything-else"), false);
+});
+
+Deno.test("isExtensionFn - matches x- prefix", () => {
+  assertEquals(isExtensionFn("x-pg.scan"), true);
+  assertEquals(isExtensionFn("x-feed.rank"), true);
+  assertEquals(isExtensionFn("read"), false);
+  assertEquals(isExtensionFn("xy"), false);
+});
+
+// ── ext keys ───────────────────────────────────────────────────────
+
+Deno.test("isExtKey - matches x- prefix", () => {
+  assertEquals(isExtKey("x-pg.cursor"), true);
+  assertEquals(isExtKey("limit"), false);
+});
+
+Deno.test("parseExtKey - splits ns and name", () => {
+  assertEquals(parseExtKey("x-pg.cursor"), { ns: "pg", name: "cursor" });
+  assertEquals(parseExtKey("x-feed.algo"), { ns: "feed", name: "algo" });
+});
+
+Deno.test("parseExtKey - bare ns yields empty name", () => {
+  assertEquals(parseExtKey("x-pg"), { ns: "pg", name: "" });
+});
+
+Deno.test("parseExtKey - non-ext key returns undefined", () => {
+  assertEquals(parseExtKey("limit"), undefined);
+});
+
+Deno.test("buildExtKey - round-trips with parseExtKey", () => {
+  assertEquals(buildExtKey("pg", "cursor"), "x-pg.cursor");
+  assertEquals(buildExtKey("pg", ""), "x-pg");
+  assertEquals(parseExtKey(buildExtKey("feed", "rank")), {
+    ns: "feed",
+    name: "rank",
+  });
+});
+
+// ── synthetic uris (b3nd://) ───────────────────────────────────────
+
+Deno.test("isSyntheticUri - flags b3nd:// addresses", () => {
+  assertEquals(isSyntheticUri("b3nd://count/m://x/"), true);
+  assertEquals(isSyntheticUri("b3nd://observe"), true);
+  assertEquals(isSyntheticUri("mutable://users/alice"), false);
+  assertEquals(isSyntheticUri(""), false);
+});
+
+Deno.test("parseSyntheticUri - splits ns + rest", () => {
+  assertEquals(
+    parseSyntheticUri("b3nd://count/mutable://users/"),
+    { ns: "count", rest: "mutable://users/" },
+  );
+  assertEquals(parseSyntheticUri("b3nd://observe"), {
+    ns: "observe",
+    rest: "",
+  });
+  assertEquals(
+    parseSyntheticUri("b3nd://feed/cursor/abc"),
+    { ns: "feed", rest: "cursor/abc" },
+  );
+  assertEquals(parseSyntheticUri("mutable://users/alice"), undefined);
+});
+
+Deno.test("countUri + parseCountUri - round-trip", () => {
+  const synthetic = countUri("mutable://users/alice/posts/");
+  assertEquals(synthetic, `${SYNTHETIC_NS}count/mutable://users/alice/posts/`);
+  assertEquals(parseCountUri(synthetic), "mutable://users/alice/posts/");
+});
+
+Deno.test("isCountUri - true only for count synthetics", () => {
+  assertEquals(isCountUri(countUri("m://x/")), true);
+  assertEquals(isCountUri("b3nd://observe"), false);
+  assertEquals(isCountUri("mutable://users/alice"), false);
+});
+
+Deno.test("isObserveUri - true for observe envelopes", () => {
+  assertEquals(isObserveUri(OBSERVE_URI), true);
+  assertEquals(isObserveUri("b3nd://observe/anything"), true);
+  assertEquals(isObserveUri(countUri("m://x/")), false);
+  assertEquals(isObserveUri("mutable://x"), false);
+});
+
+// ── helper composition ────────────────────────────────────────────
 
 Deno.test("helpers compose into a read([...]) batch", () => {
   const urls = [

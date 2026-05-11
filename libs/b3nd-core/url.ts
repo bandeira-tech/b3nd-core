@@ -1,6 +1,13 @@
 /**
  * @module
- * URL grammar for read/observe.
+ * URL grammar for read/observe — the single source of truth for
+ * parsing and constructing b3nd urls and synthetic addresses.
+ *
+ * **Everything that handles a b3nd url or `b3nd://...` address should
+ * go through this module.** Nothing else in the codebase (or in
+ * downstream backends, transports, tests, or sugar packages) should
+ * re-implement query-string splitting, fn detection, or
+ * `b3nd://...` substring inspection.
  *
  * A **url** = a uri (the protocol-defined address) plus a query string of
  * read parameters. The uri is the identity used for routing, caching, and
@@ -24,12 +31,71 @@
  * opaquely to the executing client.
  */
 
+// ── Reserved fns + extension namespace ──────────────────────────────
+
 /**
  * Reserved built-in fn names. Anything else is provider-defined and
  * conventionally namespaced as `x-<ns>.<name>`.
  */
 export const RESERVED_FNS = ["read", "ls", "count"] as const;
 export type ReservedFn = typeof RESERVED_FNS[number];
+
+/**
+ * Provider-extension fn template. Convention: `x-<ns>.<name>`.
+ */
+export type ExtensionFn = `x-${string}`;
+
+/**
+ * Any fn the framework recognizes — reserved or `x-*` extension.
+ */
+export type Fn = ReservedFn | ExtensionFn;
+
+/** True iff `fn` is one of the reserved built-ins. */
+export function isReservedFn(fn: string): fn is ReservedFn {
+  return (RESERVED_FNS as readonly string[]).includes(fn);
+}
+
+/** True iff `fn` is provider-defined (`x-...`). */
+export function isExtensionFn(fn: string): fn is ExtensionFn {
+  return fn.startsWith("x-");
+}
+
+/**
+ * Extension query-key — namespaced as `x-<ns>.<key>`. Used in the
+ * `ext` bag carried opaquely from caller to executing client.
+ */
+export type ExtKey = `x-${string}`;
+
+/** True iff `key` is a well-formed extension key (`x-...`). */
+export function isExtKey(key: string): key is ExtKey {
+  return key.startsWith("x-");
+}
+
+/**
+ * Split an extension key into its namespace and inner name.
+ *
+ *     parseExtKey("x-pg.cursor") → { ns: "pg", name: "cursor" }
+ *     parseExtKey("x-feed.algo") → { ns: "feed", name: "algo" }
+ *
+ * Returns `undefined` if the key isn't a well-formed `x-<ns>.<name>`.
+ * Keys without a `.` (e.g. `x-foo`) still parse with `name === ""`.
+ */
+export function parseExtKey(
+  key: string,
+): { ns: string; name: string } | undefined {
+  if (!isExtKey(key)) return undefined;
+  const rest = key.slice(2); // strip "x-"
+  const dot = rest.indexOf(".");
+  if (dot < 0) return { ns: rest, name: "" };
+  return { ns: rest.slice(0, dot), name: rest.slice(dot + 1) };
+}
+
+/** Build an extension key from its namespace and inner name. */
+export function buildExtKey(ns: string, name: string): ExtKey {
+  return (name ? `x-${ns}.${name}` : `x-${ns}`) as ExtKey;
+}
+
+// ── Synthetic-content namespace (b3nd://) ───────────────────────────
 
 /**
  * Synthetic-content namespace. The framework reserves `b3nd://` for
@@ -39,19 +105,73 @@ export type ReservedFn = typeof RESERVED_FNS[number];
  */
 export const SYNTHETIC_NS = "b3nd://";
 
+/** Branded type for a synthetic `b3nd://...` address. */
+export type SyntheticUri = `b3nd://${string}`;
+
+/** True iff `uri` lives under the framework-reserved `b3nd://` namespace. */
+export function isSyntheticUri(uri: string): uri is SyntheticUri {
+  return uri.startsWith(SYNTHETIC_NS);
+}
+
+/**
+ * Decompose a synthetic uri into its namespace segment and the rest.
+ *
+ *     parseSyntheticUri("b3nd://count/mutable://users/")
+ *       → { ns: "count", rest: "mutable://users/" }
+ *     parseSyntheticUri("b3nd://observe")
+ *       → { ns: "observe", rest: "" }
+ *
+ * Returns `undefined` for non-synthetic uris.
+ */
+export function parseSyntheticUri(
+  uri: string,
+): { ns: string; rest: string } | undefined {
+  if (!isSyntheticUri(uri)) return undefined;
+  const body = uri.slice(SYNTHETIC_NS.length);
+  const slash = body.indexOf("/");
+  if (slash < 0) return { ns: body, rest: "" };
+  return { ns: body.slice(0, slash), rest: body.slice(slash + 1) };
+}
+
 /**
  * Build the synthetic uri the executing client uses as the address of
  * a `fn=count` answer. The original request uri is preserved as the
  * tail so the answer is self-describing.
  */
-export const countUri = (uri: string): string => `${SYNTHETIC_NS}count/${uri}`;
+export const countUri = (uri: string): SyntheticUri =>
+  `${SYNTHETIC_NS}count/${uri}` as SyntheticUri;
+
+/**
+ * Inspect a `b3nd://count/<uri>` synthetic uri and return the
+ * wrapped uri it counts. Returns `undefined` if the input isn't a
+ * count synthetic.
+ */
+export function parseCountUri(uri: string): string | undefined {
+  const parts = parseSyntheticUri(uri);
+  if (!parts || parts.ns !== "count") return undefined;
+  return parts.rest;
+}
+
+/** True iff `uri` is a `b3nd://count/...` synthetic. */
+export function isCountUri(uri: string): boolean {
+  return parseCountUri(uri) !== undefined;
+}
 
 /**
  * Default synthetic uri for `observe` notification packages. Backends
  * may add `/<id>` or `/<pattern>` if they want to disambiguate
  * subscriptions.
  */
-export const OBSERVE_URI: string = `${SYNTHETIC_NS}observe`;
+export const OBSERVE_URI: SyntheticUri =
+  `${SYNTHETIC_NS}observe` as SyntheticUri;
+
+/** True iff `uri` is a `b3nd://observe[...]` envelope address. */
+export function isObserveUri(uri: string): boolean {
+  const parts = parseSyntheticUri(uri);
+  return parts?.ns === "observe";
+}
+
+// ── Read params + parsed url shape ──────────────────────────────────
 
 /**
  * Standard read parameters. All are optional; clients interpret the
@@ -76,6 +196,7 @@ export interface ParsedUrl {
   uri: string;
   fn: string;
   params: ReadParams;
+  /** Bag of `x-*` extension query params (every key starts with `x-`). */
   ext: Record<string, string>;
 }
 
@@ -164,7 +285,7 @@ export function buildUrl(parsed: {
   }
   if (ext) {
     for (const [k, v] of Object.entries(ext)) {
-      if (!k.startsWith("x-")) {
+      if (!isExtKey(k)) {
         throw new Error(`ext keys must start with 'x-': ${k}`);
       }
       sp.set(k, v);
@@ -236,7 +357,7 @@ export function x(
   fnName: string,
   opts?: ReadOpts,
 ): string {
-  if (!fnName.startsWith("x-")) {
+  if (!isExtensionFn(fnName)) {
     throw new Error(`x() requires fn name starting with 'x-': ${fnName}`);
   }
   const { ext, ...params } = opts ?? {};

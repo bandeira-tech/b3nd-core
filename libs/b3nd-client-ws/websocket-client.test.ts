@@ -12,6 +12,7 @@ import {
   runSharedSuite,
   type TestClientFactories,
 } from "../b3nd-testing/shared-suite.ts";
+import { countUri, parseUrl } from "../b3nd-core/url.ts";
 
 /**
  * Mock WebSocket class that simulates WebSocket behavior without network
@@ -133,16 +134,11 @@ class MockWebSocket {
         const out: any[] = [];
 
         for (const url of urls) {
-          const qIdx = url.indexOf("?");
-          const uri = qIdx < 0 ? url : url.slice(0, qIdx);
-          const params = new URLSearchParams(
-            qIdx < 0 ? "" : url.slice(qIdx + 1),
-          );
-          const fn = params.get("fn") ?? (uri.endsWith("/") ? "ls" : "read");
+          const { uri, fn, params } = parseUrl(url);
 
           if (fn === "ls") {
             const prefix = uri.endsWith("/") ? uri : `${uri}/`;
-            const format = params.get("format") ?? "full";
+            const format = params.format ?? "full";
             for (const [storedUri, stored] of this.storage) {
               if (!storedUri.startsWith(prefix)) continue;
               out.push(
@@ -156,7 +152,7 @@ class MockWebSocket {
             const prefix = uri.endsWith("/") ? uri : `${uri}/`;
             const n = Array.from(this.storage.keys())
               .filter((k) => k.startsWith(prefix)).length;
-            out.push([`b3nd://count/${uri}`, n]);
+            out.push([countUri(uri), n]);
           } else if (fn === "read") {
             const stored = this.storage.get(uri);
             if (stored) out.push([uri, stored.data]);

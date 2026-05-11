@@ -8,6 +8,7 @@
  */
 
 import { decodeBase64 } from "../b3nd-core/encoding.ts";
+import { countUri, parseUrl } from "../b3nd-core/url.ts";
 
 /**
  * Deserialize message data from JSON transport.
@@ -218,11 +219,7 @@ export class MockHttpServer {
    * found" surfaces as absence (empty array).
    */
   private readOne(url: string): unknown[] {
-    const qIdx = url.indexOf("?");
-    const uri = qIdx < 0 ? url : url.slice(0, qIdx);
-    const params = new URLSearchParams(qIdx < 0 ? "" : url.slice(qIdx + 1));
-    const explicit = params.get("fn");
-    const fn = explicit ?? (uri.endsWith("/") ? "ls" : "read");
+    const { uri, fn, params } = parseUrl(url);
 
     if (fn === "read") {
       const record = this.storage.get(uri);
@@ -238,7 +235,7 @@ export class MockHttpServer {
     }
     if (fn === "ls") {
       const prefix = uri.endsWith("/") ? uri : `${uri}/`;
-      const format = params.get("format") ?? "full";
+      const format = params.format ?? "full";
       return Array.from(this.storage.entries())
         .filter(([k]) => k.startsWith(prefix))
         .map(([k, record]) =>
@@ -249,7 +246,7 @@ export class MockHttpServer {
       const prefix = uri.endsWith("/") ? uri : `${uri}/`;
       const n = Array.from(this.storage.keys())
         .filter((k) => k.startsWith(prefix)).length;
-      return [[`b3nd://count/${uri}`, n]];
+      return [[countUri(uri), n]];
     }
     throw new Error(`unsupported fn '${fn}'`);
   }
