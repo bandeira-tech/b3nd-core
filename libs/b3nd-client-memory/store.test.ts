@@ -49,9 +49,10 @@ Deno.test("MemoryStore.read - fn=read returns single record", async () => {
 
 Deno.test("MemoryStore.read - fn=ls returns full records by default", async () => {
   const s = await seedUsers();
-  const results = await s.read(["mutable://app/users/?format=full"]);
-  assertEquals(results.length, 3);
-  for (const r of results) {
+  const [result] = await s.read(["mutable://app/users/?format=full"]);
+  const entries = result?.[1] as Array<[string, unknown]>;
+  assertEquals(entries.length, 3);
+  for (const r of entries) {
     assertEquals(typeof r[0], "string");
     assertEquals(typeof r?.[1], "object");
   }
@@ -59,9 +60,10 @@ Deno.test("MemoryStore.read - fn=ls returns full records by default", async () =
 
 Deno.test("MemoryStore.read - fn=ls format=uris omits records", async () => {
   const s = await seedUsers();
-  const results = await s.read(["mutable://app/users/?format=uris"]);
-  assertEquals(results.length, 3);
-  for (const r of results) {
+  const [result] = await s.read(["mutable://app/users/?format=uris"]);
+  const entries = result?.[1] as Array<[string, unknown]>;
+  assertEquals(entries.length, 3);
+  for (const r of entries) {
     assertEquals(typeof r[0], "string");
     assertEquals(r?.[1], undefined);
   }
@@ -69,12 +71,14 @@ Deno.test("MemoryStore.read - fn=ls format=uris omits records", async () => {
 
 Deno.test("MemoryStore.read - fn=ls limit + page slices results", async () => {
   const s = await seedUsers();
-  const page1 = await s.read([
+  const [r1] = await s.read([
     "mutable://app/users/?limit=2&page=1&sortBy=uri",
   ]);
-  const page2 = await s.read([
+  const [r2] = await s.read([
     "mutable://app/users/?limit=2&page=2&sortBy=uri",
   ]);
+  const page1 = r1?.[1] as Array<[string, unknown]>;
+  const page2 = r2?.[1] as Array<[string, unknown]>;
   assertEquals(page1.length, 2);
   assertEquals(page2.length, 1);
   assertEquals(page1[0][0], "mutable://app/users/alice");
@@ -84,10 +88,11 @@ Deno.test("MemoryStore.read - fn=ls limit + page slices results", async () => {
 
 Deno.test("MemoryStore.read - fn=ls sortOrder=desc reverses", async () => {
   const s = await seedUsers();
-  const results = await s.read([
+  const [result] = await s.read([
     "mutable://app/users/?sortBy=uri&sortOrder=desc",
   ]);
-  assertEquals(results.map((r) => r[0]), [
+  const entries = result?.[1] as Array<[string, unknown]>;
+  assertEquals(entries.map((r) => r[0]), [
     "mutable://app/users/carol",
     "mutable://app/users/bob",
     "mutable://app/users/alice",
@@ -143,12 +148,13 @@ Deno.test("MemoryStore.read - heterogeneous batch (read + count + ls)", async ()
     "mutable://app/users/?fn=count",
     "mutable://app/users/?format=uris&sortBy=uri",
   ]);
-  // 1 read + 1 count + 3 ls items = 5 results
-  assertEquals(results.length, 5);
+  // 1:1 with input: 3 outer slots, payload shape varies by fn.
+  assertEquals(results.length, 3);
   assertEquals(results[0]?.[1], { age: 30 });
   assertEquals(results[1]?.[1], 3);
+  const entries = results[2]?.[1] as Array<[string, unknown]>;
   assertEquals(
-    results.slice(2).map((r) => r[0]),
+    entries.map((r) => r[0]),
     [
       "mutable://app/users/alice",
       "mutable://app/users/bob",

@@ -88,11 +88,12 @@ read<T>(urls: string[]): Promise<Output<T>[]>
 ```
 
 - **Input**: an ordered batch of url strings.
-- **Output**: a flat `Output[]` — `[uri, payload]` tuples — in input order. The
-  result count is **independent** of input count: `fn=ls` expands one prefix
-  into many Outputs; `fn=read` on a missing uri contributes zero Outputs.
-- **"Not found" surfaces as absence.** Don't return placeholder Outputs for
-  missing entries; just don't push them.
+- **Output**: an `Output[]` **1:1 with input** — `[inputUrl, payload]` tuples in
+  input order. One slot per request; the first element is the caller's url
+  (echoed back), the second is the payload shaped per `fn`.
+- **"Not found" surfaces as `payload === undefined`** on the matching slot, not
+  as a missing slot. For `fn=ls`, an empty prefix has an empty inner `Output[]`
+  payload, not a missing outer slot.
 - **Throw on transport / programmer errors.** Network down, malformed url,
   unknown reserved fn, unsupported parameters, no route accepts — all throw. The
   rig propagates these as a single batch failure.
@@ -100,55 +101,56 @@ read<T>(urls: string[]): Promise<Output<T>[]>
 
 ### Result shape per `fn`
 
-| `fn`    | Output count                                                                        | Address                      | Payload                                    |
-| ------- | ----------------------------------------------------------------------------------- | ---------------------------- | ------------------------------------------ |
-| `read`  | 0 or 1                                                                              | the requested uri            | the value (any payload type)               |
-| `ls`    | 0 or more                                                                           | each matched uri             | the value, or `undefined` if `format=uris` |
-| `count` | exactly 1                                                                           | `b3nd://count/<request-uri>` | `number`                                   |
-| `x-*.*` | provider-defined; recommend a synthetic `b3nd://<your-ns>/...` for non-data results |                              |                                            |
+| `fn`    | Outer slot | Payload                                                             |
+| ------- | ---------- | ------------------------------------------------------------------- |
+| `read`  | 1          | `T \| undefined` (undefined = not found)                            |
+| `ls`    | 1          | `Output<T>[]` — entries under the prefix (each `[entry-uri, data]`) |
+| `count` | 1          | `number`                                                            |
+| `x-*.*` | 1          | provider-defined                                                    |
 
-For `fn=ls`, the per-item address is the absolute uri of the matched entry, not
-relative.
+The first element of each Output is the **input url** the caller passed. For
+`fn=ls`, the inner `Output[]` items use the **entry uri** in their first element
+(the matched address), not the input url.
 
 ### The `b3nd://` namespace
 
-The framework reserves `b3nd://` for any uri it has to invent — count answers,
-observe-batch envelopes, cursors, etc. There is no schema beyond the namespace
-rule; protocols are free to add sub-paths under `b3nd://<your-ns>/`.
+The framework reserves `b3nd://` for any uri it has to invent — observe-batch
+envelopes, store-specific answer addresses, cursors, etc. There is no schema
+beyond the namespace rule; stores/canons pick their own sub-paths.
 
 | Use                | Address                         | Payload               |
 | ------------------ | ------------------------------- | --------------------- |
-| `fn=count` answer  | `b3nd://count/<uri>`            | `number`              |
 | Observe envelope   | `b3nd://observe`                | `string[]` (uri list) |
 | Provider extension | `b3nd://<ns>/<...>` (suggested) | provider-defined      |
+
+(`fn=count` no longer carries a synthetic answer address — the count number is
+the payload of the outer slot, addressed by the caller's input url.)
 
 ---
 
 ## 3. The dispatch pattern
 
-The standard implementation is a switch on `fn`:
+The standard implementation is a switch on `fn` that produces exactly one output
+per input url:
 
 ```ts
 import { parseUrl } from "@bandeira-tech/b3nd-core/url";
 import type { Output } from "@bandeira-tech/b3nd-core";
 
 async read<T>(urls: string[]): Promise<Output<T>[]> {
-  const out: Output<T>[] = [];
-  for (const url of urls) {
+  return urls.map((url): Output<T> => {
     const parsed = parseUrl(url);
     switch (parsed.fn) {
-      case "read": {
-        const found = this.readOne<T>(parsed.uri);
-        if (found) out.push(found); // option-A: absence on miss
-        break;
-      }
-      case "ls":    out.push(...this.list<T>(parsed));     break;
-      case "count": out.push(this.count(parsed) as Output<T>); break;
+      case "read":
+        return [url, this.readOne<T>(parsed.uri) as T]; // T | undefined
+      case "ls":
+        return [url, this.list<T>(parsed) as unknown as T];   // Output<T>[]
+      case "count":
+        return [url, this.count(parsed) as unknown as T];     // number
       default:
         throw new Error(`MyStore: unsupported fn '${parsed.fn}'`);
     }
-  }
-  return out;
+  });
 }
 ```
 
@@ -301,9 +303,9 @@ fn, regardless of advertised support). That may change.
 | Transport broke (DB connection lost, network down) | **Throw** — rig propagates as batch failure |
 | Caller asked for an unsupported `fn` or param      | **Throw** — programmer error                |
 | Malformed url                                      | `parseUrl` throws; let it propagate         |
-| `fn=read` on a missing uri                         | Push nothing (absence)                      |
-| Empty result for a `fn=ls` over a missing prefix   | Return `[]`                                 |
-| Empty result for `fn=count` over a missing prefix  | Push `[<your-count-answer-uri>, 0]`         |
+| `fn=read` on a missing uri                         | `[inputUrl, undefined]` (1:1 slot, absent)  |
+| Empty result for a `fn=ls` over a missing prefix   | `[inputUrl, []]` (empty inner Output[])     |
+| Empty result for `fn=count` over a missing prefix  | `[inputUrl, 0]`                             |
 | Domain-level "permission denied", quota, etc.      | Encode in payload by protocol convention    |
 
 Rule of thumb: **the framework knows two things — Output or throw**. Anything
@@ -324,10 +326,6 @@ import type {
   StoreWriteResult,
 } from "@bandeira-tech/b3nd-core";
 
-// MyStore picks its own convention for the count answer address —
-// anything under the framework's `b3nd://` reserved namespace.
-const myCountUri = (uri: string): string => `b3nd://count/${uri}`;
-
 class MyStore implements Store {
   private kv = new Map<string, unknown>();
 
@@ -337,26 +335,19 @@ class MyStore implements Store {
   }
 
   read<T>(urls: string[]): Promise<Output<T>[]> {
-    const out: Output<T>[] = [];
-    for (const url of urls) {
+    return Promise.resolve(urls.map((url): Output<T> => {
       const p = parseUrl(url);
       switch (p.fn) {
-        case "read": {
-          if (this.kv.has(p.uri)) out.push([p.uri, this.kv.get(p.uri) as T]);
-          // miss = absence
-          break;
-        }
+        case "read":
+          return [url, this.kv.get(p.uri) as T]; // T | undefined
         case "ls":
-          out.push(...this.ls<T>(p));
-          break;
+          return [url, this.ls<T>(p) as unknown as T]; // Output<T>[]
         case "count":
-          out.push(this.count(p) as Output<T>);
-          break;
+          return [url, this.count(p) as unknown as T]; // number
         default:
           throw new Error(`MyStore: unsupported fn '${p.fn}'`);
       }
-    }
-    return Promise.resolve(out);
+    }));
   }
 
   private ls<T>(p: ParsedUrl): Output<T>[] {
@@ -379,10 +370,9 @@ class MyStore implements Store {
     );
   }
 
-  private count(p: ParsedUrl): Output<number> {
+  private count(p: ParsedUrl): number {
     const prefix = p.uri.endsWith("/") ? p.uri : `${p.uri}/`;
-    const n = [...this.kv.keys()].filter((k) => k.startsWith(prefix)).length;
-    return [myCountUri(p.uri), n];
+    return [...this.kv.keys()].filter((k) => k.startsWith(prefix)).length;
   }
 
   delete(uris: string[]) {

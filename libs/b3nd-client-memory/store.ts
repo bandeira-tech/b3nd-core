@@ -32,14 +32,6 @@ import type {
 import type { ParsedUrl } from "../b3nd-core/url.ts";
 import { parseUrl } from "../b3nd-core/url.ts";
 
-/**
- * Synthetic address MemoryStore uses to carry a `fn=count` answer back
- * to the caller. The framework reserves `b3nd://` for invented uris;
- * the `/count/<uri>` shape is a MemoryStore convention so the answer
- * is self-describing.
- */
-const countUri = (uri: string): string => `b3nd://count/${uri}`;
-
 type StorageNode<T = unknown> = {
   value?: { data: T };
   children?: Map<string, StorageNode>;
@@ -121,33 +113,25 @@ export class MemoryStore implements Store {
   // ── Read ─────────────────────────────────────────────────────────
 
   read<T = unknown>(urls: string[]): Promise<Output<T>[]> {
-    const out: Output<T>[] = [];
-
-    for (const url of urls) {
+    // 1:1 with input urls. Each output is [inputUrl, payload]; payload
+    // shape varies by fn (see ProtocolInterfaceNode.read docs).
+    const out: Output<T>[] = urls.map((url) => {
       const parsed = parseUrl(url);
       switch (parsed.fn) {
-        case "read": {
-          const found = this._readOne<T>(parsed.uri);
-          // Option-A: "not found" surfaces as absence (no Output).
-          if (found !== undefined) out.push(found);
-          break;
-        }
+        case "read":
+          return [url, this._readOne<T>(parsed.uri) as T];
         case "ls":
-          out.push(...this._list<T>(parsed));
-          break;
+          return [url, this._list<T>(parsed) as unknown as T];
         case "count":
-          out.push(this._count(parsed) as unknown as Output<T>);
-          break;
+          return [url, this._count(parsed) as unknown as T];
         default:
-          // Programmer error — unknown fn is not a domain "not found".
           throw new Error(`MemoryStore: unsupported fn '${parsed.fn}'`);
       }
-    }
-
+    });
     return Promise.resolve(out);
   }
 
-  private _readOne<T>(uri: string): Output<T> | undefined {
+  private _readOne<T>(uri: string): T | undefined {
     const { parts, node } = resolveTarget(uri, this.storage);
     if (!node) return undefined;
 
@@ -158,7 +142,7 @@ export class MemoryStore implements Store {
     }
 
     if (!current.value) return undefined;
-    return [uri, (current.value as { data: T }).data];
+    return (current.value as { data: T }).data;
   }
 
   /**
@@ -241,12 +225,11 @@ export class MemoryStore implements Store {
     return entries as Output<T>[];
   }
 
-  private _count(parsed: ParsedUrl): Output<number> {
+  private _count(parsed: ParsedUrl): number {
     if (parsed.params.pattern !== undefined) {
       throw new Error("MemoryStore: pattern filter not supported");
     }
-    const n = this._walk(parsed.uri).length;
-    return [countUri(parsed.uri), n];
+    return this._walk(parsed.uri).length;
   }
 
   // ── Delete ───────────────────────────────────────────────────────

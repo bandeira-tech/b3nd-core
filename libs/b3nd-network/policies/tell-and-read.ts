@@ -158,7 +158,11 @@ export function tellAndRead(opts: TellAndReadOptions): TellAndReadBundle {
           result.map((uri) => source.client.read<unknown>([uri])),
         );
         for (const outputs of pulls) {
-          for (const out of outputs) yield out;
+          // `read` is 1:1 with input; misses surface as `payload === undefined`.
+          // Skip miss slots so consumers only see real content.
+          for (const out of outputs) {
+            if (out?.[1] !== undefined) yield out;
+          }
         }
       },
     },

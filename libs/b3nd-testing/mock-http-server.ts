@@ -17,6 +17,7 @@
  */
 
 import { decodeBase64 } from "../b3nd-core/encoding.ts";
+import { encodeBinaryForJson } from "../b3nd-core/binary.ts";
 import { MemoryStore } from "../b3nd-client-memory/store.ts";
 
 /** Wire shape used to carry `Uint8Array` through JSON. */
@@ -35,22 +36,6 @@ function isBinaryMarker(v: unknown): v is BinaryMarker {
 
 function deserializeMsgData(data: unknown): unknown {
   return isBinaryMarker(data) ? decodeBase64(data.data) : data;
-}
-
-function encodeB64(bytes: Uint8Array): string {
-  let s = "";
-  for (let i = 0; i < bytes.length; i++) s += String.fromCharCode(bytes[i]);
-  return btoa(s);
-}
-
-function serializeMsgData(data: unknown): unknown {
-  return data instanceof Uint8Array
-    ? {
-      __b3nd_binary__: true,
-      encoding: "base64",
-      data: encodeB64(data),
-    } satisfies BinaryMarker
-    : data;
 }
 
 export interface MockServerConfig {
@@ -235,8 +220,11 @@ export class MockHttpServer {
       );
     }
     const outputs = await this.store.read(urls as string[]);
+    // Server-side wire encoding: walks the payload to encode binary
+    // values as base64 markers and `undefined` as a sentinel so it
+    // survives JSON. Matches the real `httpApi` server.
     return Response.json(
-      outputs.map(([uri, data]) => [uri, serializeMsgData(data)]),
+      outputs.map(([uri, data]) => [uri, encodeBinaryForJson(data)]),
     );
   }
 }

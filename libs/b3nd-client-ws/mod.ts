@@ -307,6 +307,7 @@ export class WebSocketClient implements ProtocolInterfaceNode {
     if (urls.length === 0) return [];
     const outputs = await this.sendRequest<Output<T>[]>("read", { urls });
     const items = Array.isArray(outputs) ? outputs : [outputs];
+    // Decode wire markers (binary + undefined) embedded in payloads.
     return items.map(([uri, payload]) =>
       [uri, decodeBinaryFromJson(payload) as T] as Output<T>
     );

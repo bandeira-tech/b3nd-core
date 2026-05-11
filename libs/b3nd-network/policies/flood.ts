@@ -65,6 +65,17 @@ export function flood(peers: Peer[]): ProtocolInterfaceNode {
 const identityTransform = <T>(xs: T): T => xs;
 
 /**
+ * Treat `undefined` (no point read) and `[]` (empty ls) as empty so we
+ * keep trying peers. Everything else — including `0` from `fn=count` —
+ * is a real answer.
+ */
+function isEmptyPayload(payload: unknown): boolean {
+  if (payload === undefined) return true;
+  if (Array.isArray(payload) && payload.length === 0) return true;
+  return false;
+}
+
+/**
  * Internal shared implementation used by `flood`, `pathVector`, and
  * `tellAndRead.outbound`. The `transform` rewrites the per-peer
  * outbound batch: return `msgs` unchanged to flood as-is, return a
@@ -102,18 +113,26 @@ export function floodImpl(
     async read<T = unknown>(urls: string[]): Promise<Output<T>[]> {
       if (urls.length === 0) return [];
 
-      // Try peers in order. First non-empty result wins. Empty (peer
-      // checked, nothing to return) is "not found" under option-A;
-      // try the next peer. Transport errors are swallowed per-peer.
-      for (const p of peers) {
-        try {
-          const outputs = await p.client.read<T>(urls);
-          if (outputs.length > 0) return outputs;
-        } catch {
-          // try next peer
+      // 1:1 with input. Per url, try peers in order; first peer that
+      // returns a non-empty payload wins. "Empty" = `undefined` for
+      // point reads, `[]` for `fn=ls`, `0` for `fn=count`. If every
+      // peer is empty (or throws), the slot stays empty (`undefined`).
+      // Transport errors are swallowed per-peer.
+      const out: Output<T>[] = await Promise.all(urls.map(async (url) => {
+        let fallback: Output<T> = [url, undefined as unknown as T];
+        for (const p of peers) {
+          try {
+            const [r] = await p.client.read<T>([url]);
+            if (!r) continue;
+            fallback = r;
+            if (!isEmptyPayload(r[1])) return r;
+          } catch {
+            // try next peer
+          }
         }
-      }
-      return [];
+        return fallback;
+      }));
+      return out;
     },
 
     // ── observe ──────────────────────────────────────────────────────

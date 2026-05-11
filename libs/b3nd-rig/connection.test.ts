@@ -81,13 +81,13 @@ Deno.test("rig routes receive to correct connection", async () => {
   const r1 = (await remote.read(["mutable://open/x"]))[0];
   const r2 = (await local.read(["mutable://open/x"]))[0];
   assertEquals(r1?.[1], { v: 1 });
-  assertEquals(r2, undefined); // option-A: absent
+  assertEquals(r2?.[1], undefined); // 1:1: slot present, payload absent
 
   // local has local data, remote doesn't
   const r3 = (await local.read(["local://app/y"]))[0];
   const r4 = (await remote.read(["local://app/y"]))[0];
   assertEquals(r3?.[1], { v: 2 });
-  assertEquals(r4, undefined);
+  assertEquals(r4?.[1], undefined);
 });
 
 Deno.test("rig reads from first matching connection (no fall-through)", async () => {
@@ -117,7 +117,7 @@ Deno.test("rig reads from first matching connection (no fall-through)", async ()
   // Primary doesn't have it; rig stops at primary's miss. To fall back,
   // wrap the two memClients in an aggregating client and route to that.
   const r2 = (await rig.read(["mutable://open/old"]))[0];
-  assertEquals(r2, undefined);
+  assertEquals(r2?.[1], undefined);
 });
 
 Deno.test("rig broadcasts writes to all matching connections", async () => {
@@ -342,6 +342,7 @@ Deno.test("list via trailing-slash read routes through connection", async () => 
   await rig.receive([["mutable://open/a", "one"]]);
   await rig.receive([["mutable://open/b", "two"]]);
 
-  const results = await rig.read(["mutable://open/"]);
-  assertEquals(results.length >= 2, true);
+  const [result] = await rig.read(["mutable://open/"]);
+  const entries = result?.[1] as Array<[string, unknown]>;
+  assertEquals(entries.length >= 2, true);
 });

@@ -299,13 +299,16 @@ export function runSharedStoreSuite(
     // ── Read: nonexistent, partial failures ─────────────────────────
 
     Deno.test({
-      name: `${suiteName} - read nonexistent yields no Output (absence)`,
+      name: `${suiteName} - read nonexistent yields undefined payload`,
       ...noSanitize,
       fn: async () => {
         const store = await Promise.resolve(config.create());
 
         const results = await store.read(["store://app/missing"]);
-        assertEquals(results.length, 0);
+        // 1:1 with input: slot is always present, payload undefined on miss.
+        assertEquals(results.length, 1);
+        assertEquals(results[0]?.[0], "store://app/missing");
+        assertEquals(results[0]?.[1], undefined);
       },
     });
 
@@ -323,9 +326,12 @@ export function runSharedStoreSuite(
           "store://app/exists",
           "store://app/missing",
         ]);
-        // Option-A: 1 hit + 1 miss = 1 Output.
-        assertEquals(results.length, 1);
+        // 1:1 with input: 1 hit (payload set) + 1 miss (payload undefined).
+        assertEquals(results.length, 2);
         assertEquals(results[0]?.[0], "store://app/exists");
+        assertEquals(results[0]?.[1], { ok: true });
+        assertEquals(results[1]?.[0], "store://app/missing");
+        assertEquals(results[1]?.[1], undefined);
       },
     });
   }
@@ -366,9 +372,12 @@ export function runSharedStoreSuite(
         ]);
 
         const results = await store.read(["store://users/"]);
-        assertEquals(results.length >= 2, true);
+        // 1:1: one outer slot. Inner payload is Output[] of the entries.
+        assertEquals(results.length, 1);
+        const entries = results[0]?.[1] as Array<[string, unknown]>;
+        assertEquals(entries.length >= 2, true);
 
-        const uris = results.map((r) => r[0]).sort();
+        const uris = entries.map((r) => r[0]).sort();
         assertEquals(uris.includes("store://users/alice"), true);
         assertEquals(uris.includes("store://users/bob"), true);
       },
@@ -441,10 +450,11 @@ export function runSharedStoreSuite(
           "store://app/b",
           "store://app/c",
         ]);
-        // Option-A: deleted entries surface as absence, so only "B" remains.
-        assertEquals(results.length, 1);
-        assertEquals(results[0]?.[0], "store://app/b");
-        assertEquals(results[0]?.[1], "B");
+        // 1:1 with input: deleted entries surface with undefined payload.
+        assertEquals(results.length, 3);
+        assertEquals(results[0]?.[1], undefined);
+        assertEquals(results[1]?.[1], "B");
+        assertEquals(results[2]?.[1], undefined);
       },
     });
   }

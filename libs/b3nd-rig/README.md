@@ -62,17 +62,19 @@ await rig.receive([["mutable://open/external", { source: "webhook" }]]);
 ## Observation
 
 ```typescript
-// Reads always take an array of urls; results in input order, ls
-// expands inline.
-const results = await rig.read<T>([u1, u2]);
-
-// Trailing slash → fn=ls; `?fn=...` overrides. Compose by url.
-await rig.read([
+// `read(urls)` returns `Output[]` 1:1 with input — one [inputUrl, payload]
+// slot per requested url, in input order. Payload shape depends on `fn`:
+//   read  → T | undefined
+//   ls    → Output<T>[]
+//   count → number
+const [profile, total, posts] = await rig.read([
   "mutable://app/users/alice", // fn=read (default)
-  "mutable://app/users/?fn=count", // → number, addressed at b3nd://count/...
-  "mutable://app/users/?limit=20", // fn=ls → expands inline
-  "mutable://app/users/?format=uris", // fn=ls&format=uris (no record)
+  "mutable://app/users/?fn=count", // payload: number
+  "mutable://app/users/?format=uris", // payload: Output<undefined>[]
 ]);
+profile?.[1]; // user record (or undefined on miss)
+total?.[1]; // count
+(posts?.[1] as Array<[string, unknown]>).map(([uri]) => uri);
 ```
 
 The executing client parses urls with `parseUrl` from `@bandeira-tech/b3nd-core`

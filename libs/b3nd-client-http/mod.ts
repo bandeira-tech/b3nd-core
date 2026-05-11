@@ -180,7 +180,7 @@ export class HttpClient implements ProtocolInterfaceNode {
       );
     }
     const body = await response.json() as Output<T>[];
-    // Decode binary payloads embedded in Output payloads.
+    // Decode wire markers (binary + undefined) embedded in payloads.
     for (let i = 0; i < body.length; i++) {
       const [uri, payload] = body[i];
       body[i] = [uri, decodeBinaryFromJson(payload) as T];
