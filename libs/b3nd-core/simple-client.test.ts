@@ -42,10 +42,10 @@ Deno.test({
     ]);
 
     // The envelope data is stored at the envelope URI
-    const _envelope = await client.read(["envelope://test/1"]);
+    await client.read(["envelope://test/1"]);
 
     // But the output was NOT written — no fan-out
-    const _output = await client.read(["mutable://app/x"]);
+    await client.read(["mutable://app/x"]);
   },
 });
 

@@ -139,8 +139,8 @@ Deno.test("rig broadcasts writes to all matching connections", async () => {
   await rig.receive([["mutable://open/x", { v: 1 }]]);
 
   // Both have the data
-  const _r1 = (await primary.read(["mutable://open/x"]))[0];
-  const _r2 = (await mirror.read(["mutable://open/x"]))[0];
+  await primary.read(["mutable://open/x"]);
+  await mirror.read(["mutable://open/x"]);
 });
 
 Deno.test("rig rejects receive for unconnected URI", async () => {
@@ -190,7 +190,7 @@ Deno.test("best-effort: local connection enforces even if client accepts everyth
   assertEquals(result.accepted, false);
 
   // Verify nothing was written
-  const _readResults = await client.read(["hash://sha256/abc"]);
+  await client.read(["hash://sha256/abc"]);
 });
 
 Deno.test("programs and connections are separate concerns", async () => {
@@ -282,7 +282,7 @@ Deno.test("single client via explicit connection still works (catch-all)", async
 
   const [r] = await rig.receive([["mutable://open/x", { v: 1 }]]);
   assertEquals(r.accepted, true);
-  const _readResults = await rig.read(["mutable://open/x"]);
+  await rig.read(["mutable://open/x"]);
 });
 
 Deno.test("status().schema unions all connection client schemas", async () => {

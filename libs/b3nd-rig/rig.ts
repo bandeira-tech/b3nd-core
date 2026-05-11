@@ -1011,7 +1011,5 @@ function createRouteDispatch(
   };
 }
 
-// ── Compile-time assertion ──
-// Rig structurally satisfies ProtocolInterfaceNode, so it can be
-// passed directly to any function that expects a client.
-const _rigIsClient: ProtocolInterfaceNode = null! as Rig;
+// Compile-time: Rig structurally satisfies ProtocolInterfaceNode.
+(null! as Rig) satisfies ProtocolInterfaceNode;

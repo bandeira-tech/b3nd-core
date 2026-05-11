@@ -114,7 +114,7 @@ Deno.test("flood.read falls through failing peers", async () => {
 
 Deno.test("flood.read returns not-found when no peer has it", async () => {
   const npi = flood([peer(mem(), { id: "A" }), peer(mem(), { id: "B" })]);
-  const _results = await npi.read(["mutable://nope"]);
+  await npi.read(["mutable://nope"]);
 });
 
 // ── observe — merged stream ─────────────────────────────────────────

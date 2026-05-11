@@ -405,7 +405,7 @@ export function runSharedStoreSuite(
 
         await store.delete(["store://app/x"]);
 
-        const _readResults = await store.read(["store://app/x"]);
+        await store.read(["store://app/x"]);
       },
     });
   }

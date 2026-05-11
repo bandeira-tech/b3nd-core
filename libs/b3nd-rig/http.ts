@@ -247,9 +247,7 @@ export function httpApi(
       const uri = extractUri(path, "/api/v1/observe/");
       if (!uri) return json({ error: "Invalid URI" }, 400);
 
-      const since = Number(url.searchParams.get("since") || "0");
-      const lastEventId = req.headers.get("Last-Event-ID");
-      const _effectiveSince = lastEventId ? Number(lastEventId) : since;
+      // TODO: wire since/?since= + Last-Event-ID into SseSubscriber for SSE resume support
 
       const sub: SseSubscriber = {
         prefix: uri,

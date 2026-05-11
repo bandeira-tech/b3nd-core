@@ -1204,7 +1204,7 @@ Deno.test("createClientFromUrl - creates console client", async () => {
   assertEquals(results[0].accepted, true);
 
   // Console client is write-only
-  const _readResults = await client.read(["mutable://test/key"]);
+  await client.read(["mutable://test/key"]);
 });
 
 Deno.test("createStoreFromUrl - rejects http (transport protocol)", async () => {
@@ -1924,10 +1924,10 @@ Deno.test("Rig connections - per-op routing uses separate backends", async () =>
 
   // Receive should go to writeClient
   await rig.receive([["mutable://open/new", { from: "write" }]]);
-  const _fromWrite = (await writeClient.read(["mutable://open/new"]))[0];
+  await writeClient.read(["mutable://open/new"]);
 
   // readClient should NOT have the write
-  const _fromRead = (await readClient.read(["mutable://open/new"]))[0];
+  await readClient.read(["mutable://open/new"]);
 });
 
 Deno.test("Rig - programs still work with hooks", async () => {
