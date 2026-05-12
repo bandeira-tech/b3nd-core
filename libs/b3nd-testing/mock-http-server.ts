@@ -1,19 +1,20 @@
 /**
  * Mock HTTP Server for testing HttpClient.
  *
- * Acts as a wire-format adapter only — receive/read are delegated to a
- * `MemoryStore`. The mock owns HTTP framing (routes, JSON encode/decode,
- * status codes). It does not interpret payloads in any way — content
- * semantics (miss representation, binary encoding, etc.) are the
- * caller/protocol's concern.
+ * Acts as a wire-format adapter only — owns HTTP framing (routes, JSON
+ * encode/decode, status codes), and keeps received payloads in a
+ * minimal `Map<uri, payload>` so subsequent reads can find them.
+ *
+ * The mock intentionally does NOT use any `Store` implementation —
+ * it's a server stand-in, not a Store. Decoupling it from `MemoryStore`
+ * keeps the HTTP client tests as pure transport-layer tests, with the
+ * backend side reduced to "remember what you were told to remember."
  *
  * Modes:
  * - `happy`               — fully functional
  * - `connectionError`     — server is never started
  * - `validationError`     — receive always rejects with a fixed error
  */
-
-import { MemoryStore } from "../b3nd-client-memory/store.ts";
 
 export interface MockServerConfig {
   /** Port to run server on */
@@ -22,18 +23,23 @@ export interface MockServerConfig {
   /** Behavior mode */
   mode: "happy" | "connectionError" | "validationError";
 
-  /** Pre-built MemoryStore for sharing state across mocks. */
-  store?: MemoryStore;
+  /** Pre-built map for sharing state across mocks. */
+  state?: Map<string, unknown>;
 }
 
 export class MockHttpServer {
   private server?: Deno.HttpServer;
   private config: MockServerConfig;
-  private store: MemoryStore;
+  /**
+   * The mock's "memory" — a flat `uri → payload` map. No paths, no
+   * trees, no `fn=ls`/`fn=count` semantics. The HTTP client tests
+   * only need write/read/delete by uri.
+   */
+  private state: Map<string, unknown>;
 
   constructor(config: MockServerConfig) {
     this.config = config;
-    this.store = config.store ?? new MemoryStore();
+    this.state = config.state ?? new Map();
   }
 
   async start(): Promise<void> {
@@ -153,27 +159,17 @@ export class MockHttpServer {
           outputs: unknown[][];
         };
 
-        if (inputs.length > 0) {
-          await this.store.delete(inputs);
-        }
+        for (const inputUri of inputs) this.state.delete(inputUri);
 
-        const writeEntries: { uri: string; data: unknown }[] = [];
         for (const output of outputs) {
           if (Array.isArray(output) && output.length >= 2) {
             const [outUri, outPayload] = output;
-            writeEntries.push({
-              uri: outUri as string,
-              data: outPayload,
-            });
+            this.state.set(outUri as string, outPayload);
           }
         }
-        if (writeEntries.length > 0) await this.store.write(writeEntries);
       } else {
-        // Direct write — store payload at the message URI
-        await this.store.write([{
-          uri: msgUri as string,
-          data: msgPayload,
-        }]);
+        // Direct write — remember payload at the message URI
+        this.state.set(msgUri as string, msgPayload);
       }
 
       results.push({ accepted: true });
@@ -197,9 +193,27 @@ export class MockHttpServer {
       );
     }
     // Payloads pass through as-is; content semantics are not a
-    // transport concern. `undefined` slots collapse to JSON `null`
-    // — protocols agree on their own miss representation.
-    return Response.json(await this.store.read(urls as string[]));
+    // transport concern. Two cases the mock has to satisfy:
+    //   - point read (uri without trailing slash) → look up the key,
+    //     return `[url, payload | undefined]`.
+    //   - trailing-slash list — the wire-format suite asserts that
+    //     reading `prefix/` returns an `Output[]` of entries under
+    //     the prefix. The mock answers this with a flat prefix scan
+    //     (NOT a tree walk — we don't pretend to be a Store with
+    //     specific ls semantics; we just hand back every key that
+    //     starts with the prefix so the HTTP client tests have
+    //     something to verify the wire frames).
+    const out = (urls as string[]).map((u): [string, unknown] => {
+      if (u.endsWith("/")) {
+        const entries: [string, unknown][] = [];
+        for (const [k, v] of this.state) {
+          if (k.startsWith(u)) entries.push([k, v]);
+        }
+        return [u, entries];
+      }
+      return [u, this.state.get(u)];
+    });
+    return Response.json(out);
   }
 }
 

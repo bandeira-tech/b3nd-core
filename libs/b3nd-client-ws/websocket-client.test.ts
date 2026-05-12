@@ -12,14 +12,18 @@ import {
   runSharedSuite,
   type TestClientFactories,
 } from "../b3nd-testing/shared-suite.ts";
-import { MemoryStore } from "../b3nd-client-memory/store.ts";
-
 /**
- * Mock WebSocket class that simulates WebSocket behavior without network
+ * Mock WebSocket class that simulates WebSocket behavior without network.
+ *
+ * The mock owns wire framing; received payloads are kept in a flat
+ * `Map<uri, payload>` so reads find them. NOT a Store implementation —
+ * just enough state for the shared transport-client suite to verify
+ * round-trips. Trailing-slash reads return every entry whose uri
+ * starts with the prefix (a simple scan, not a tree walk).
  */
 class MockWebSocket {
   private listeners: Map<string, Set<(event: any) => void>> = new Map();
-  protected store: MemoryStore = new MemoryStore();
+  protected state: Map<string, unknown> = new Map();
   private timers: Set<number> = new Set();
   readyState: number;
   static readonly CONNECTING = 0;
@@ -86,7 +90,12 @@ class MockWebSocket {
     this.dispatchEvent({ type: "close", code, reason });
   }
 
+  // deno-lint-ignore require-await
   protected async generateResponse(request: any): Promise<any> {
+    // Kept `async` so subclasses (e.g. ValidationFailingMockWebSocket)
+    // can override with an async body without changing the parent
+    // signature. The body itself no longer awaits anything since the
+    // backing store became a plain Map.
     if (request.type === "receive") {
       // Handle receive batch: payload is [[uri, payload], ...]
       const batch = request.payload as [string, unknown][];
@@ -103,14 +112,18 @@ class MockWebSocket {
 
         if (isEnvelope) {
           const inputs = envelope!.inputs as string[];
-          if (inputs.length > 0) await this.store.delete(inputs);
+          for (const inputUri of inputs) this.state.delete(inputUri);
 
-          const entries = (envelope!.outputs as [string, unknown][]).map(
-            ([outUri, data]) => ({ uri: outUri, data }),
-          );
-          if (entries.length > 0) await this.store.write(entries);
+          for (
+            const [outUri, data] of envelope!.outputs as [
+              string,
+              unknown,
+            ][]
+          ) {
+            this.state.set(outUri, data);
+          }
         } else {
-          await this.store.write([{ uri, data: msgPayload }]);
+          this.state.set(uri, msgPayload);
         }
 
         results.push({ accepted: true });
@@ -124,16 +137,21 @@ class MockWebSocket {
       // with input urls. Payload shape depends on `fn` (see
       // `ProtocolInterfaceNode.read`). Payloads pass through as JSON.
       const urls: string[] = request.payload.urls ?? [];
-      try {
-        const data = await this.store.read(urls);
-        return { id: request.id, success: true, data };
-      } catch (err) {
-        return {
-          id: request.id,
-          success: false,
-          error: err instanceof Error ? err.message : String(err),
-        };
-      }
+      // Mirror the HTTP mock's read shape — point uris look up by
+      // key, trailing-slash uris return every entry whose key starts
+      // with the prefix as a flat `Output[]`. No tree semantics; just
+      // enough for the wire-level shared-suite assertions.
+      const data = urls.map((u): [string, unknown] => {
+        if (u.endsWith("/")) {
+          const entries: [string, unknown][] = [];
+          for (const [k, v] of this.state) {
+            if (k.startsWith(u)) entries.push([k, v]);
+          }
+          return [u, entries];
+        }
+        return [u, this.state.get(u)];
+      });
+      return { id: request.id, success: true, data };
     }
 
     if (request.type === "status") {
