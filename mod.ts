@@ -43,10 +43,12 @@ export {
   encodeHex,
 } from "./libs/b3nd-core/encoding.ts";
 
-// ── Protocol clients (Store → ProtocolInterfaceNode) ──
+// ── Protocol clients ──
+//
+// Store→Client adapters (SimpleClient, DataStoreClient) moved to
+// @bandeira-tech/b3nd-stores/adapters in 0.16. FunctionalClient
+// stays here — no Store dependency.
 
-export { SimpleClient } from "./libs/b3nd-core/simple-client.ts";
-export { DataStoreClient } from "./libs/b3nd-core/data-store-client.ts";
 export { FunctionalClient } from "./libs/b3nd-core/functional-client.ts";
 export type { FunctionalClientConfig } from "./libs/b3nd-core/functional-client.ts";
 
@@ -55,9 +57,10 @@ export type { FunctionalClientConfig } from "./libs/b3nd-core/functional-client.
 export { ObserveEmitter } from "./libs/b3nd-core/observe-emitter.ts";
 export type { ObserveListener } from "./libs/b3nd-core/observe-emitter.ts";
 
-// ── Built-in clients ──
+// ── Built-in transport clients ──
+//
+// MemoryStore moved to @bandeira-tech/b3nd-stores/memory in 0.16.
 
-export { MemoryStore } from "./libs/b3nd-client-memory/store.ts";
 export { HttpClient } from "./libs/b3nd-client-http/mod.ts";
 export { WebSocketClient } from "./libs/b3nd-client-ws/mod.ts";
 export { ConsoleClient } from "./libs/b3nd-client-console/client.ts";
@@ -129,19 +132,7 @@ export type {
 export { httpApi } from "./libs/b3nd-rig/http.ts";
 export type { HttpApiOptions } from "./libs/b3nd-rig/http.ts";
 
-// Backend factory
-export {
-  createClientFromUrl,
-  createClientResolver,
-  createStoreFromUrl,
-  createStoreResolver,
-  getSupportedProtocols,
-} from "./libs/b3nd-rig/backend-factory.ts";
-export type {
-  BackendFactoryOptions,
-  BackendResolver,
-  StoreClientConstructor,
-} from "./libs/b3nd-rig/backend-factory.ts";
+// Backend factory moved to @bandeira-tech/b3nd-stores/factory in 0.16.
 
 // ── Network primitives ──
 

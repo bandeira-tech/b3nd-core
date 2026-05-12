@@ -310,11 +310,13 @@ export interface StoreCapabilities {
  * `ProtocolInterfaceNode.observe` is implemented by clients via
  * `ObserveEmitter`, not by stores.
  *
- * Protocol clients (SimpleClient, DataStoreClient) wrap a Store
- * with protocol semantics to produce a ProtocolInterfaceNode.
+ * Store→Client adapters (`SimpleClient`, `DataStoreClient` from
+ * `@bandeira-tech/b3nd-stores/adapters`) wrap a Store to produce
+ * a ProtocolInterfaceNode.
  *
  * @example
  * ```typescript
+ * import { MemoryStore } from "@bandeira-tech/b3nd-stores/memory";
  * const store = new MemoryStore();
  *
  * // Write

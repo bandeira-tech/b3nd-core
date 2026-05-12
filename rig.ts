@@ -2,7 +2,7 @@
  * @module
  * Rig subpath — the orchestration layer of B3nd.
  *
- * Bundles `Rig`, `connection`, the backend-factory URL helpers, hooks,
+ * Bundles `Rig`, `connection`, hooks,
  * events, reactions, and the `httpApi` request handler. Browsers and
  * servers alike can pull this in to compose a node without reaching
  * for the root export.
@@ -17,11 +17,7 @@
 
 // ── Rig ──
 export { Rig } from "./libs/b3nd-rig/rig.ts";
-export type {
-  RigConfig,
-  RigInfo,
-  RigRoutes,
-} from "./libs/b3nd-rig/types.ts";
+export type { RigConfig, RigInfo, RigRoutes } from "./libs/b3nd-rig/types.ts";
 
 // ── OperationHandle ──
 export type {
@@ -82,16 +78,4 @@ export { matchPattern, ReactionRegistry } from "./libs/b3nd-rig/reactions.ts";
 export { httpApi } from "./libs/b3nd-rig/http.ts";
 export type { HttpApiOptions } from "./libs/b3nd-rig/http.ts";
 
-// ── Backend factory ──
-export {
-  createClientFromUrl,
-  createClientResolver,
-  createStoreFromUrl,
-  createStoreResolver,
-  getSupportedProtocols,
-} from "./libs/b3nd-rig/backend-factory.ts";
-export type {
-  BackendFactoryOptions,
-  BackendResolver,
-  StoreClientConstructor,
-} from "./libs/b3nd-rig/backend-factory.ts";
+// Backend factory moved to @bandeira-tech/b3nd-stores/factory in 0.16.

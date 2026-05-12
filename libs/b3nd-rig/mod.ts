@@ -59,7 +59,7 @@ export type {
   StatusResult,
   Store,
 } from "../b3nd-core/types.ts";
-export { DataStoreClient } from "../b3nd-core/data-store-client.ts";
+// DataStoreClient moved to @bandeira-tech/b3nd-stores/adapters in 0.16.
 
 // Hooks (immutable after init — throw to reject, observe to audit)
 export type {
@@ -94,16 +94,4 @@ export type { RigRoutes } from "./types.ts";
 export { httpApi } from "./http.ts";
 export type { HttpApiOptions } from "./http.ts";
 
-// Backend factory
-export {
-  createClientFromUrl,
-  createClientResolver,
-  createStoreFromUrl,
-  createStoreResolver,
-  getSupportedProtocols,
-} from "./backend-factory.ts";
-export type {
-  BackendFactoryOptions,
-  BackendResolver,
-  StoreClientConstructor,
-} from "./backend-factory.ts";
+// Backend factory moved to @bandeira-tech/b3nd-stores/factory in 0.16.
