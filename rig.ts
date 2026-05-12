@@ -3,7 +3,7 @@
  * Rig subpath — the orchestration layer of B3nd.
  *
  * Bundles `Rig`, `connection`, hooks,
- * events, reactions, and the `httpApi` request handler. Browsers and
+ * events, and reactions. Browsers and
  * servers alike can pull this in to compose a node without reaching
  * for the root export.
  *
@@ -74,8 +74,5 @@ export { RigEventEmitter } from "./libs/b3nd-rig/events.ts";
 export type { ReactionHandler } from "./libs/b3nd-rig/reactions.ts";
 export { matchPattern, ReactionRegistry } from "./libs/b3nd-rig/reactions.ts";
 
-// ── HTTP API helper ──
-export { httpApi } from "./libs/b3nd-rig/http.ts";
-export type { HttpApiOptions } from "./libs/b3nd-rig/http.ts";
-
+// httpApi moved to @bandeira-tech/b3nd-servers/http/api in 0.17.
 // Backend factory moved to @bandeira-tech/b3nd-stores/factory in 0.16.
