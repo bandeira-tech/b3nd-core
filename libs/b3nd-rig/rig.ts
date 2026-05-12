@@ -59,6 +59,7 @@ import { OperationHandleImpl } from "./operation-handle.ts";
  *
  * @example With programs, hooks, events, and reactions
  * ```typescript
+ * // DataStoreClient + MemoryStore come from @bandeira-tech/b3nd-stores
  * const local = connection(new DataStoreClient(new MemoryStore()), ["*"]);
  * const rig = new Rig({
  *   routes: { receive: [local], read: [local], observe: [local] },
