@@ -13,13 +13,17 @@
 import { assertEquals, assertNotEquals, assertRejects } from "@std/assert";
 import { Rig } from "./rig.ts";
 import { connection } from "./connection.ts";
-import { DataStoreClient } from "../b3nd-core/data-store-client.ts";
-import { MemoryStore } from "../b3nd-client-memory/store.ts";
 import { FunctionalClient } from "../b3nd-core/functional-client.ts";
+import { RecordingClient } from "../b3nd-testing/recording-client.ts";
 import type { Output, Program, ReceiveResult } from "../b3nd-core/types.ts";
 
+// These tests verify OperationHandle event emissions only — they never
+// assert anything about persisted state, so a recording-fake route
+// target is exactly what's needed. The default `accepted: true` per
+// message keeps each test focused on what events fire, not what the
+// backend did with the payload.
 function memClient() {
-  return new DataStoreClient(new MemoryStore());
+  return new RecordingClient();
 }
 
 // ── Awaitable behavior ────────────────────────────────────────────────
