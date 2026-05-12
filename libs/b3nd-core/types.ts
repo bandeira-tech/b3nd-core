@@ -360,61 +360,9 @@ export interface Store {
   capabilities?(): StoreCapabilities;
 }
 
-/**
- * Configuration for HttpClient
- */
-export interface HttpClientConfig {
-  /**
-   * Base URL of the HTTP API
-   */
-  url: string;
-
-  /**
-   * Optional custom headers
-   */
-  headers?: Record<string, string>;
-
-  /**
-   * Request timeout in milliseconds (default: 30000)
-   */
-  timeout?: number;
-}
-
-/**
- * Configuration for WebSocketClient
- */
-export interface WebSocketClientConfig {
-  /**
-   * WebSocket server URL
-   */
-  url: string;
-
-  /**
-   * Optional authentication configuration
-   */
-  auth?: {
-    type: "bearer" | "basic" | "custom";
-    token?: string;
-    username?: string;
-    password?: string;
-    custom?: Record<string, unknown>;
-  };
-
-  /**
-   * Optional reconnection configuration
-   */
-  reconnect?: {
-    enabled: boolean;
-    maxAttempts?: number;
-    interval?: number;
-    backoff?: "linear" | "exponential";
-  };
-
-  /**
-   * Request timeout in milliseconds (default: 30000)
-   */
-  timeout?: number;
-}
+// HttpClientConfig, WebSocketClientConfig, WebSocketRequest, and
+// WebSocketResponse moved to @bandeira-tech/b3nd-servers in 0.17
+// (each lives next to its client implementation).
 
 /**
  * Structured error codes for programmatic error handling.
@@ -527,23 +475,5 @@ export interface ContentData<T = unknown> {
   data: T;
 }
 
-/**
- * WebSocket protocol types for request/response communication
- */
-export interface WebSocketRequest {
-  id: string;
-  type:
-    | "receive"
-    | "read"
-    | "observe"
-    | "observe-cancel"
-    | "status";
-  payload: unknown;
-}
-
-export interface WebSocketResponse {
-  id: string;
-  success: boolean;
-  data?: unknown;
-  error?: string;
-}
+// WebSocketRequest / WebSocketResponse moved to
+// @bandeira-tech/b3nd-servers/ws/client in 0.17.

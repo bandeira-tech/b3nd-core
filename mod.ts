@@ -16,7 +16,6 @@ export type {
   CodeHandler,
   DeleteResult,
   HealthStatus,
-  HttpClientConfig,
   Message,
   Output,
   Program,
@@ -29,9 +28,6 @@ export type {
   StoreCapabilities,
   StoreEntry,
   StoreWriteResult,
-  WebSocketClientConfig,
-  WebSocketRequest,
-  WebSocketResponse,
   WriteResult,
 } from "./libs/b3nd-core/types.ts";
 export { ErrorCode, Errors } from "./libs/b3nd-core/types.ts";
@@ -59,10 +55,11 @@ export type { ObserveListener } from "./libs/b3nd-core/observe-emitter.ts";
 
 // ── Built-in transport clients ──
 //
-// MemoryStore moved to @bandeira-tech/b3nd-stores/memory in 0.16.
+// HttpClient, WebSocketClient (+ httpApi) moved to
+// @bandeira-tech/b3nd-servers in 0.17 (each pairs with its server
+// half there). MemoryStore moved to @bandeira-tech/b3nd-stores in
+// 0.16. ConsoleClient stays — write-only sink with no server side.
 
-export { HttpClient } from "./libs/b3nd-client-http/mod.ts";
-export { WebSocketClient } from "./libs/b3nd-client-ws/mod.ts";
 export { ConsoleClient } from "./libs/b3nd-client-console/client.ts";
 
 // ── Rig ──
@@ -127,11 +124,7 @@ export type {
   ConnectionOptions,
 } from "./libs/b3nd-rig/connection.ts";
 
-// HTTP API — pure request handler. Server composition + transports
-// (httpServer, grpcServer, withCors) live in @bandeira-tech/b3nd-servers.
-export { httpApi } from "./libs/b3nd-rig/http.ts";
-export type { HttpApiOptions } from "./libs/b3nd-rig/http.ts";
-
+// httpApi moved to @bandeira-tech/b3nd-servers/http/api in 0.17.
 // Backend factory moved to @bandeira-tech/b3nd-stores/factory in 0.16.
 
 // ── Network primitives ──

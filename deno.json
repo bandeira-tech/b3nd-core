@@ -1,6 +1,6 @@
 {
   "name": "@bandeira-tech/b3nd-core",
-  "version": "0.16.0",
+  "version": "0.17.0",
   "description": "B3nd Core — framework foundation: types, encoding, clients, rig, network, hash, encrypt",
   "exports": {
     ".": "./mod.ts",
@@ -12,8 +12,6 @@
     "./network": "./libs/b3nd-network/mod.ts",
     "./rig": "./rig.ts",
     "./identity": "./libs/b3nd-rig/identity.ts",
-    "./client-http": "./client-http.ts",
-    "./client-ws": "./client-ws.ts",
     "./client-console": "./libs/b3nd-client-console/mod.ts"
   },
   "imports": {
@@ -22,7 +20,7 @@
     "canonicalize": "npm:canonicalize@2.0.0"
   },
   "tasks": {
-    "check": "deno check mod.ts rig.ts client-http.ts client-ws.ts",
+    "check": "deno check mod.ts rig.ts",
     "test": "deno test --allow-all libs/",
     "build:npm": "deno run -A scripts/build-npm.ts"
   },

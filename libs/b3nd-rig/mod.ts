@@ -89,9 +89,5 @@ export { connection } from "./connection.ts";
 export type { Connection, ConnectionOptions } from "./connection.ts";
 export type { RigRoutes } from "./types.ts";
 
-// HTTP API — standalone function for serving a rig over HTTP.
-// Server composition + transports live in @bandeira-tech/b3nd-servers.
-export { httpApi } from "./http.ts";
-export type { HttpApiOptions } from "./http.ts";
-
+// httpApi moved to @bandeira-tech/b3nd-servers/http/api in 0.17.
 // Backend factory moved to @bandeira-tech/b3nd-stores/factory in 0.16.
