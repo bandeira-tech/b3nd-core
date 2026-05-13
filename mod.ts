@@ -24,10 +24,6 @@ export type {
   ReadFn,
   ReceiveResult,
   StatusResult,
-  Store,
-  StoreCapabilities,
-  StoreEntry,
-  StoreWriteResult,
   WriteResult,
 } from "./libs/b3nd-core/types.ts";
 export { ErrorCode, Errors } from "./libs/b3nd-core/types.ts";

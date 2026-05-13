@@ -6,7 +6,7 @@
  * Use this when a test cares about *what the framework dispatched*
  * (which methods, in what order, with what arguments) rather than
  * about a specific backend's behavior. Tests pin themselves to the
- * dispatch contract instead of accidentally depending on a Store's
+ * dispatch contract instead of accidentally depending on a backend's
  * particular semantics.
  *
  * @example

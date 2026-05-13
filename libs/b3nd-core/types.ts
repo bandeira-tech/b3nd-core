@@ -257,112 +257,14 @@ export interface ProtocolInterfaceNode {
   status(): Promise<StatusResult>;
 }
 
-// ── Store — batch-native storage primitive ────────────────────────
-
-/**
- * Entry for a batch write operation.
- *
- * @example
- * ```typescript
- * await store.write([
- *   { uri: "mutable://users/alice", data: { name: "Alice" } },
- *   { uri: "mutable://users/bob", data: { name: "Bob" } },
- * ]);
- * ```
- */
-export interface StoreEntry<T = unknown> {
-  uri: string;
-  data: T;
-}
-
-/**
- * Per-entry result of a write operation.
- */
-export interface StoreWriteResult {
-  success: boolean;
-  error?: string;
-}
-
-/**
- * Optional capability reporting for a Store.
- *
- * Backends declare what they can do so protocol clients and rigs
- * can make informed decisions (e.g., wrap deletes+writes in a
- * transaction when atomicBatch is true).
- */
-export interface StoreCapabilities {
-  /** Whether write+delete within a single call can be made atomic. */
-  atomicBatch?: boolean;
-  /** Whether this store can handle binary (Uint8Array) data natively. */
-  binaryData?: boolean;
-}
-
-/**
- * Store — the batch-native storage abstraction.
- *
- * Every operation takes arrays and returns per-item results.
- * This lets each backend optimize for its technology:
- * Postgres → single multi-row INSERT, S3 → parallel PutObject, etc.
- *
- * The Store knows nothing about protocols, envelopes, or message
- * semantics. It is pure mechanical storage: write entries, read
- * entries, delete entries. Observation is a client concern —
- * `ProtocolInterfaceNode.observe` is implemented by clients via
- * `ObserveEmitter`, not by stores.
- *
- * Store→Client adapters (`SimpleClient`, `DataStoreClient` from
- * `@bandeira-tech/b3nd-stores/adapters`) wrap a Store to produce
- * a ProtocolInterfaceNode.
- *
- * @example
- * ```typescript
- * import { MemoryStore } from "@bandeira-tech/b3nd-stores/memory";
- * const store = new MemoryStore();
- *
- * // Write
- * await store.write([
- *   { uri: "mutable://app/config", data: { theme: "dark" } },
- * ]);
- *
- * // Read
- * const results = await store.read(["mutable://app/config"]);
- *
- * // Delete
- * await store.delete(["mutable://app/config"]);
- * ```
- */
-export interface Store {
-  /**
-   * Write entries in batch. Returns one result per entry.
-   */
-  write(entries: StoreEntry[]): Promise<StoreWriteResult[]>;
-
-  /**
-   * Read a batch of urls. Returns `Output[]` 1:1 with input urls.
-   * See `ProtocolInterfaceNode.read` for the full contract — `Store.read`
-   * follows the same semantics.
-   */
-  read<T = unknown>(urls: string[]): Promise<Output<T>[]>;
-
-  /**
-   * Delete URIs in batch. Returns one result per URI.
-   */
-  delete(uris: string[]): Promise<DeleteResult[]>;
-
-  /**
-   * Health and capability status.
-   */
-  status(): Promise<StatusResult>;
-
-  /**
-   * Optional capability reporting.
-   */
-  capabilities?(): StoreCapabilities;
-}
-
-// HttpClientConfig, WebSocketClientConfig, WebSocketRequest, and
-// WebSocketResponse moved to @bandeira-tech/b3nd-servers in 0.17
-// (each lives next to its client implementation).
+// `Store`, `StoreEntry`, `StoreWriteResult`, and `StoreCapabilities`
+// moved to @bandeira-tech/b3nd-save in 0.18. A "store" is no longer a
+// core concept — it is an implementation detail of b3nd-save, shielded
+// from the rest of the framework by the Store→Client adapters that
+// wrap it (SimpleClient, DataStoreClient). HttpClientConfig,
+// WebSocketClientConfig, WebSocketRequest, and WebSocketResponse moved
+// to @bandeira-tech/b3nd-servers in 0.17 (each lives next to its
+// client implementation).
 
 /**
  * Structured error codes for programmatic error handling.

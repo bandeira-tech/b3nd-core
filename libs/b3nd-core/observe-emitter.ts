@@ -1,8 +1,9 @@
 /**
  * @module
  * ObserveEmitter — the shared listener + async-iterator machinery used by
- * Store→Client adapters (`@bandeira-tech/b3nd-stores/adapters` —
- * `SimpleClient`, `DataStoreClient`) to expose `observe()`.
+ * `ProtocolInterfaceNode` implementations (e.g. the Store→Client adapters
+ * `SimpleClient` / `DataStoreClient` in `@bandeira-tech/b3nd-save`) to expose
+ * `observe()`.
  *
  * Observe is INV-style notification: each successful write or delete
  * yields an `Output<string[]>` — `[inputUrl, uris]` — where `inputUrl`

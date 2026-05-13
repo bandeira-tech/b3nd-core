@@ -57,9 +57,10 @@ export type {
   ProtocolInterfaceNode,
   ReceiveResult,
   StatusResult,
-  Store,
 } from "../b3nd-core/types.ts";
 // DataStoreClient moved to @bandeira-tech/b3nd-stores/adapters in 0.16.
+// `Store` moved to @bandeira-tech/b3nd-save in 0.18 — it is no longer a core
+// concept.
 
 // Hooks (immutable after init — throw to reject, observe to audit)
 export type {
