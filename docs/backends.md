@@ -1,8 +1,14 @@
 # Building a b3nd backend
 
-This is the contract for anyone implementing a `Store` (Postgres, IndexedDB, S3,
-Redis, …) or a full `ProtocolInterfaceNode` (a network-fronted node, an
-aggregating client, etc.) for b3nd.
+This is the contract for anyone implementing a `ProtocolInterfaceNode` (a
+network-fronted node, an aggregating client, etc.) for b3nd.
+
+> If you want to plug a byte-keyed storage backend (Postgres, IndexedDB, S3,
+> Redis, …) into b3nd, you usually want a `Store` from
+> [`@bandeira-tech/b3nd-save`](https://jsr.io/@bandeira-tech/b3nd-save) and let
+> its `SimpleClient` / `DataStoreClient` adapt it to `ProtocolInterfaceNode`.
+> `Store` is a b3nd-save concept, not a core one — the framework only sees the
+> client.
 
 The framework is small — four primitives — and one shape:
 
@@ -27,34 +33,12 @@ framework promises, what's reserved, and what you're free to interpret.
 
 ---
 
-## 1. The interfaces
+## 1. The interface
 
-There are two implementation surfaces:
-
-### `Store` — mechanical storage
-
-Used when you want b3nd's `SimpleClient` / `DataStoreClient` wrappers to handle
-protocol semantics for you (envelope decomposition, deletion-as-data, etc.).
-Implement four methods:
-
-```ts
-interface Store {
-  write(entries: StoreEntry[]): Promise<StoreWriteResult[]>;
-  read<T>(urls: string[]): Promise<Output<T>[]>;
-  delete(uris: string[]): Promise<DeleteResult[]>;
-  status(): Promise<StatusResult>;
-  capabilities?(): StoreCapabilities;
-}
-```
-
-`urls` here are exactly the same shape as `ProtocolInterfaceNode.read` — full
-url strings, including the `?fn=…&…` query string. You're expected to parse them
-with `parseUrl(url)` and dispatch on `fn`.
-
-### `ProtocolInterfaceNode` — full client
-
-Used when you're not just storage — you're a transport, a router, an aggregator.
-Implement the four primitives directly:
+`ProtocolInterfaceNode` is the one b3nd-core backend surface. Implement it when
+you're a transport, a router, an aggregator, or anything that doesn't reduce to
+"byte-keyed KV plus adapter" (byte-keyed KV → use a `Store` from
+`@bandeira-tech/b3nd-save` instead). The four primitives:
 
 > **Aggregator example.** The `flood()` strategy in `b3nd-network` is a working
 > aggregator: it takes a list of peer clients and presents them as one
@@ -102,20 +86,20 @@ read<T>(urls: string[]): Promise<Output<T>[]>
 
 ### Common shape conventions per `fn`
 
-Stores typically pick payloads along these lines, but none of it is enforced by
-the framework — your store is free to do otherwise:
+Backends typically pick payloads along these lines, but none of it is enforced
+by the framework — your backend is free to do otherwise:
 
 | `fn`               | Outer slot | Common payload                                                      |
 | ------------------ | ---------- | ------------------------------------------------------------------- |
 | `read`             | 1          | the stored value, or a protocol-defined miss representation         |
-| `ls` (format=full) | 1          | `Output<T>[]` — entries under the prefix (each `[entry-uri, data]`) |
+| `ls` (format=full) | 1          | `Output<T>[]` — entries under the prefix (each `[entry-uri, payload]`) |
 | `ls` (format=uris) | 1          | `string[]` — flat list of entry uris                                |
 | `count`            | 1          | `number`                                                            |
 | `x-*.*`            | 1          | provider-defined                                                    |
 
-The reference `MemoryStore` returns `undefined` for `fn=read` misses when used
-in-process; over a JSON wire transport that `undefined` collapses to `null`.
-Callers and stores agree out-of-band on how to interpret either.
+By convention, `fn=read` misses surface as `undefined` in-process; over a JSON
+wire transport that `undefined` collapses to `null`. Callers and backends agree
+out-of-band on how to interpret either.
 
 The first element of each Output is the **input url** the caller passed. For
 `fn=ls&format=full`, the inner `Output[]` items use the **entry uri** in their
@@ -125,7 +109,7 @@ first element (the matched address), not the input url.
 
 The framework reserves `b3nd://` for any uri it has to invent — observe-batch
 envelopes, store-specific answer addresses, cursors, etc. There is no schema
-beyond the namespace rule; stores/canons pick their own sub-paths.
+beyond the namespace rule; backends/canons pick their own sub-paths.
 
 | Use                | Address                         | Payload               |
 | ------------------ | ------------------------------- | --------------------- |
@@ -157,7 +141,7 @@ async read<T>(urls: string[]): Promise<Output<T>[]> {
       case "count":
         return [url, this.count(parsed) as unknown as T];     // number
       default:
-        throw new Error(`MyStore: unsupported fn '${parsed.fn}'`);
+        throw new Error(`MyClient: unsupported fn '${parsed.fn}'`);
     }
   });
 }
@@ -213,15 +197,14 @@ Open — interpreted per backend, **throw on unsupported values**:
 ### Convention: `page` indexing
 
 `page` is **1-indexed** by convention (page=1 is the first page). Backends are
-free to support 0-indexed too, but the reference `MemoryStore` assumes
-1-indexed.
+free to support 0-indexed too.
 
 ### Throw on unsupported params
 
 If a caller asks for `pattern: "foo*"` and you don't support globs, throw:
 
 ```ts
-throw new Error("MyStore: pattern matching is not supported");
+throw new Error("MyClient: pattern matching is not supported");
 ```
 
 Don't silently return empty — that hides the bug from the caller.
@@ -323,89 +306,7 @@ payload by your protocol's convention.
 
 ---
 
-## 8. A 50-line worked example
-
-```ts
-import { parseUrl } from "@bandeira-tech/b3nd-core/url";
-import type {
-  Output,
-  ParsedUrl,
-  StatusResult,
-  Store,
-  StoreEntry,
-  StoreWriteResult,
-} from "@bandeira-tech/b3nd-core";
-
-class MyStore implements Store {
-  private kv = new Map<string, unknown>();
-
-  write(entries: StoreEntry[]): Promise<StoreWriteResult[]> {
-    for (const e of entries) this.kv.set(e.uri, e.data);
-    return Promise.resolve(entries.map(() => ({ success: true })));
-  }
-
-  read<T>(urls: string[]): Promise<Output<T>[]> {
-    return Promise.resolve(urls.map((url): Output<T> => {
-      const p = parseUrl(url);
-      switch (p.fn) {
-        case "read":
-          return [url, this.kv.get(p.uri) as T]; // T | undefined
-        case "ls":
-          return [url, this.ls<T>(p) as unknown as T]; // Output<T>[]
-        case "count":
-          return [url, this.count(p) as unknown as T]; // number
-        default:
-          throw new Error(`MyStore: unsupported fn '${p.fn}'`);
-      }
-    }));
-  }
-
-  private ls<T>(p: ParsedUrl): Output<T>[] | string[] {
-    if (p.params.pattern !== undefined) {
-      throw new Error("MyStore: pattern not supported");
-    }
-    const prefix = p.uri.endsWith("/") ? p.uri : `${p.uri}/`;
-    let entries = [...this.kv.entries()].filter(([k]) => k.startsWith(prefix));
-    if (p.params.sortBy === "uri") {
-      const dir = p.params.sortOrder === "desc" ? -1 : 1;
-      entries.sort(([a], [b]) => a.localeCompare(b) * dir);
-    }
-    if (p.params.limit !== undefined) {
-      const start = ((p.params.page ?? 1) - 1) * p.params.limit;
-      entries = entries.slice(start, start + p.params.limit);
-    }
-    const format = p.params.format ?? "full";
-    if (format === "uris") return entries.map(([uri]) => uri);
-    return entries as Output<T>[];
-  }
-
-  private count(p: ParsedUrl): number {
-    const prefix = p.uri.endsWith("/") ? p.uri : `${p.uri}/`;
-    return [...this.kv.keys()].filter((k) => k.startsWith(prefix)).length;
-  }
-
-  delete(uris: string[]) {
-    for (const u of uris) this.kv.delete(u);
-    return Promise.resolve(uris.map(() => ({ success: true as const })));
-  }
-
-  status(): Promise<StatusResult> {
-    return Promise.resolve({
-      status: "healthy",
-      fns: ["read", "ls", "count"],
-    });
-  }
-}
-```
-
-The reference `MemoryStore` in
-[`libs/b3nd-client-memory/store.ts`](../libs/b3nd-client-memory/store.ts) is a
-slightly fuller version of this pattern — read it for a working example tested
-against the shared store suite.
-
----
-
-## 9. What the rig promises and doesn't
+## 8. What the rig promises and doesn't
 
 The rig will:
 
@@ -427,7 +328,7 @@ The rig will **not**:
 
 ---
 
-## 10. Sugars live one layer up
+## 9. Sugars live one layer up
 
 The core ships `read(urls): Output[]` and the url helpers. Higher-level
 ergonomics — `readData<T>(uri) → T | null`, `readCount(uri) → number`, typed
@@ -437,19 +338,10 @@ wraps however they like.
 
 ---
 
-## 11. Tests for free
+## 10. Tests for byte-store backends
 
-If you implement `Store`, drop your factory into the shared suite:
-
-```ts
-import { runSharedStoreSuite } from "@bandeira-tech/b3nd-core/testing";
-import { MyStore } from "./store.ts";
-
-runSharedStoreSuite("MyStore", { create: () => new MyStore() });
-```
-
-The suite covers the basics (write/read round-trip, deletion, batch behavior,
-scalar types). Backend-specific tests for `fn=ls`, `fn=count`, sort/limit/page,
-and `x-*` extensions you write yourself — look at
-[`libs/b3nd-client-memory/store.test.ts`](../libs/b3nd-client-memory/store.test.ts)
-for examples.
+If you're building a byte-keyed `Store` for use with
+`@bandeira-tech/b3nd-save`'s adapters, that package ships a shared store suite
+covering write/read round-trip, deletion, batch behavior, and bytes shapes.
+`ProtocolInterfaceNode` implementations test against the dispatch shapes
+documented above plus whatever your transport / aggregation logic adds.
