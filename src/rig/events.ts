@@ -4,7 +4,10 @@
  *
  * Events are async, fire-and-forget — they run AFTER the operation
  * completes (after post-hooks). They never block the caller.
- * Handler errors are caught and logged, never propagated.
+ *
+ * Handler errors are caught (never propagated) and surfaced via
+ * `onHandlerError` listeners. If no listener is registered, they
+ * fall back to `console.warn` so failures are never silent.
  *
  * On cleanup, pending event promises are returned to the caller
  * so they can choose to await them or let them go.
@@ -44,19 +47,27 @@ export interface RigEvent {
 /** Event handler function. */
 export type EventHandler = (event: RigEvent) => void | Promise<void>;
 
+/** Listener for errors thrown inside event handlers. */
+export type HandlerErrorListener = (
+  error: unknown,
+  event: RigEventName,
+) => void;
+
 // ── Emitter ──
 
 /**
  * Typed event emitter for Rig operations.
  *
  * - Handlers fire asynchronously (via microtask)
- * - Handler errors are caught and logged to console.warn
+ * - Handler errors are routed to `onHandlerError` listeners; if none are
+ *   registered, they fall back to `console.warn`
  * - Wildcard events (`*:success`, `*:error`) fire for all operations
  * - `pending()` returns in-flight handler promises for drain-on-cleanup
  */
 export class RigEventEmitter {
   private handlers = new Map<RigEventName, Set<EventHandler>>();
-  private inflight: Promise<void>[] = [];
+  private errorListeners = new Set<HandlerErrorListener>();
+  private inflight = new Set<Promise<void>>();
 
   /** Register a handler. Returns an unsubscribe function. */
   on(event: RigEventName, handler: EventHandler): () => void {
@@ -74,6 +85,19 @@ export class RigEventEmitter {
     this.handlers.get(event)?.delete(handler);
   }
 
+  /**
+   * Register a listener for errors thrown inside event handlers.
+   * Returns an unsubscribe function.
+   *
+   * When at least one listener is registered, the `console.warn` fallback
+   * is suppressed — the listener owns reporting. If a listener itself
+   * throws, that secondary error falls back to `console.warn` (no recursion).
+   */
+  onHandlerError(listener: HandlerErrorListener): () => void {
+    this.errorListeners.add(listener);
+    return () => this.errorListeners.delete(listener);
+  }
+
   /** Return handler counts per event name. */
   counts(): Record<string, number> {
     const result: Record<string, number> = {};
@@ -85,8 +109,9 @@ export class RigEventEmitter {
 
   /**
    * Fire an event. Handlers run asynchronously and never block.
-   * Errors in handlers are caught and logged to console.warn.
-   * Promises are tracked so `pending()` can return them.
+   * Errors in handlers are routed to `onHandlerError` listeners (or
+   * `console.warn` if none). Promises are tracked so `pending()` can
+   * return them, and self-evict once settled.
    */
   emit(event: RigEventName, payload: RigEvent): void {
     const specific = this.handlers.get(event);
@@ -100,19 +125,28 @@ export class RigEventEmitter {
     ];
 
     for (const handler of all) {
-      const p = Promise.resolve().then(() => handler(payload)).catch((err) => {
-        console.warn(`[rig] event handler error on "${event}":`, err);
-      });
-      this.inflight.push(p);
+      const p: Promise<void> = Promise.resolve()
+        .then(() => handler(payload))
+        .catch((err) => this.dispatchHandlerError(err, event));
+      this.inflight.add(p);
+      p.finally(() => this.inflight.delete(p));
     }
+  }
 
-    // Prune settled promises to prevent unbounded growth
-    if (this.inflight.length > 100) {
-      this.inflight = this.inflight.filter((p) => {
-        let settled = false;
-        p.then(() => settled = true, () => settled = true);
-        return !settled;
-      });
+  private dispatchHandlerError(error: unknown, event: RigEventName): void {
+    if (this.errorListeners.size === 0) {
+      console.warn(`[rig] event handler error on "${event}":`, error);
+      return;
+    }
+    for (const listener of this.errorListeners) {
+      try {
+        listener(error, event);
+      } catch (listenerError) {
+        console.warn(
+          `[rig] onHandlerError listener threw:`,
+          listenerError,
+        );
+      }
     }
   }
 
@@ -124,8 +158,8 @@ export class RigEventEmitter {
    * - Ignore them if you don't care about completion
    */
   pending(): Promise<void>[] {
-    const result = this.inflight;
-    this.inflight = [];
+    const result = [...this.inflight];
+    this.inflight.clear();
     return result;
   }
 }
