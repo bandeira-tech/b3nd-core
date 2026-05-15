@@ -5,13 +5,14 @@ The universal harness for b3nd. One import, convention over configuration.
 ## Quick Start
 
 ```typescript
-import { connection, DataStoreClient, Identity, Rig } from "@b3nd/rig";
-import { MemoryStore } from "@b3nd/client-memory";
+import { connection, Identity, Rig } from "@bandeira-tech/b3nd-core/rig";
+import { DataStoreClient } from "@bandeira-tech/b3nd-save/clients";
+import { MemoryStore } from "@bandeira-tech/b3nd-save/memory";
 import {
   message,
   messageDataHandler,
   messageDataProgram,
-} from "@bandeira-tech/b3nd-sdk/msg";
+} from "@bandeira-tech/b3nd-canon/msg";
 
 const id = await Identity.fromSeed("my-secret");
 
@@ -78,8 +79,9 @@ total?.[1]; // count
 posts?.[1] as string[]; // ["mutable://app/users/alice", ...]
 ```
 
-The executing client parses urls with `parseUrl` from `@bandeira-tech/b3nd-core`
-and dispatches on `fn`. See `libs/b3nd-core/url.ts` for the grammar.
+The executing client parses urls with `parseUrl` from
+`@bandeira-tech/b3nd-core/url` and dispatches on `fn`. See
+[`src/url/url.ts`](../url/url.ts) for the grammar.
 
 ## Encrypted Operations
 
@@ -124,7 +126,7 @@ the same connection can be referenced from multiple routes when it serves them
 with the same filter.
 
 ```typescript
-import { connection, Rig } from "@b3nd/rig";
+import { connection, Rig } from "@bandeira-tech/b3nd-core/rig";
 
 // Read-only cache (no receive binding)
 const cache = connection(redisClient, [
@@ -340,16 +342,19 @@ const rig = new Rig({
 
 ## HTTP API
 
-```typescript
-import { httpApi } from "@b3nd/rig/http";
+Transports are external to core. HTTP, WebSocket, gRPC-HTTP, and MCP
+live in [@bandeira-tech/b3nd-move](https://github.com/bandeira-tech/b3nd-move)
+and consume a rig (or any `ProtocolInterfaceNode`) over the PIN
+interface:
 
-const api = httpApi(rig, { statusMeta: { version: "1.0" } });
-Deno.serve({ port: 3000 }, api);
+```typescript
+import { httpService } from "@bandeira-tech/b3nd-move/http/service";
+
+Deno.serve({ port: 3000 }, httpService(rig, { statusMeta: { version: "1.0" } }));
 ```
 
-`httpApi()` is a standalone function — the rig stays pure (orchestration only),
-transport is external. Returns a standard `(Request) => Promise<Response>` with
-all b3nd API routes including SSE subscriptions. Framework-agnostic — plug into
+The rig stays pure (orchestration only). `httpService()` returns a
+standard `(Request) => Promise<Response>` handler — plug into
 Deno.serve, Hono, Express, Cloudflare Workers.
 
 ## ProtocolInterfaceNode

@@ -4,12 +4,13 @@
  * Logs receive (write) operations to stdout (or a custom logger).
  * Read always returns empty results — this client is for inspection, not retrieval.
  *
- * This is a transport-style client (like HttpClient, WebSocketClient) with
- * no underlying Store — it's a sink, not storage.
+ * This is a transport-style client with no underlying Store — it's a sink,
+ * not storage. (Compare to the HTTP / WebSocket clients in
+ * `@bandeira-tech/b3nd-move`, which speak the same shape over the wire.)
  *
  * @example
  * ```typescript
- * import { ConsoleClient } from "@bandeira-tech/b3nd-sdk";
+ * import { ConsoleClient } from "@bandeira-tech/b3nd-core/client-console";
  *
  * const client = new ConsoleClient("debug");
  *

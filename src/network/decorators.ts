@@ -16,6 +16,7 @@ import type { PeerDecorator } from "./types.ts";
  * unchanged so bridges and observers behave normally.
  *
  * ```ts
+ * import { HttpClient } from "@bandeira-tech/b3nd-move/http/client";
  * peer(new HttpClient({ url }), { via: [bestEffort] })
  * ```
  */

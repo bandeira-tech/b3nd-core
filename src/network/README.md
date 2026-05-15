@@ -1,4 +1,4 @@
-# @bandeira-tech/b3nd-sdk/network
+# @bandeira-tech/b3nd-core/network
 
 Peer-network primitives for B3nd. Compose `ProtocolInterfaceNode` clients into
 peer collections that are consumed in one of two ways:
@@ -25,7 +25,7 @@ import {
   peer,
   type Policy,
   tellAndRead,
-} from "@bandeira-tech/b3nd-sdk/network";
+} from "@bandeira-tech/b3nd-core/network";
 ```
 
 ## Mental model
@@ -143,14 +143,11 @@ seen-set hook.
 ## Example: participant node with sync filter
 
 ```ts
-import { network, peer } from "@bandeira-tech/b3nd-sdk/network";
-import {
-  connection,
-  HttpClient,
-  MemoryStore,
-  Rig,
-  SimpleClient,
-} from "@bandeira-tech/b3nd-sdk";
+import { connection, Rig } from "@bandeira-tech/b3nd-core";
+import { network, peer } from "@bandeira-tech/b3nd-core/network";
+import { SimpleClient } from "@bandeira-tech/b3nd-save/clients";
+import { MemoryStore } from "@bandeira-tech/b3nd-save/memory";
+import { HttpClient } from "@bandeira-tech/b3nd-move/http/client";
 
 const local = new SimpleClient(new MemoryStore());
 const peers = [
@@ -175,8 +172,9 @@ await unbind();
 ## Example: federation (remote-client)
 
 ```ts
-import { flood, peer } from "@bandeira-tech/b3nd-sdk/network";
-import { connection, HttpClient, Rig } from "@bandeira-tech/b3nd-sdk";
+import { connection, Rig } from "@bandeira-tech/b3nd-core";
+import { flood, peer } from "@bandeira-tech/b3nd-core/network";
+import { HttpClient } from "@bandeira-tech/b3nd-move/http/client";
 
 const peers = [
   peer(new HttpClient({ url: "https://node-b" }), { id: "B" }),
@@ -202,8 +200,8 @@ side-channel. URI layout for announcements is the protocol author's call; the
 framework never peeks at a scheme.
 
 ```ts
-import { network, peer, tellAndRead } from "@bandeira-tech/b3nd-sdk/network";
-import { connection, Rig } from "@bandeira-tech/b3nd-sdk";
+import { connection, Rig } from "@bandeira-tech/b3nd-core";
+import { network, peer, tellAndRead } from "@bandeira-tech/b3nd-core/network";
 
 const sync = tellAndRead({
   // Outbound: rewrite every hash:// payload into a tiny inv:// message.
@@ -241,8 +239,9 @@ and "I already have it" short-circuits are all expressible in the
 ## Example: signed full-participant mesh
 
 ```ts
-import { network, pathVector, peer } from "@bandeira-tech/b3nd-sdk/network";
-import { connection, HttpClient, Rig } from "@bandeira-tech/b3nd-sdk";
+import { connection, Rig } from "@bandeira-tech/b3nd-core";
+import { network, pathVector, peer } from "@bandeira-tech/b3nd-core/network";
+import { HttpClient } from "@bandeira-tech/b3nd-move/http/client";
 
 // Peer ids MUST be the peers' signing pubkey (hex) for pathVector to
 // recognize them in the signer chain.
@@ -294,5 +293,5 @@ side-channel API — everything is addressed content flowing through
 
 ## Tests
 
-Run with `deno test --allow-all libs/b3nd-network/`. No sanitizer overrides —
+Run with `deno test --allow-all src/network/`. No sanitizer overrides —
 Deno's op and resource sanitizers are active on every test.
