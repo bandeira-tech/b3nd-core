@@ -12,14 +12,10 @@ The Rig wires storage, validation, and behavior into a single object that speaks
 the `ProtocolInterfaceNode` (PIN) interface.
 
 ```typescript
-import {
-  connection,
-  count,
-  DataStoreClient,
-  list,
-  MemoryStore,
-  Rig,
-} from "@bandeira-tech/b3nd-core";
+import { connection, Rig } from "@bandeira-tech/b3nd-core";
+import { count, list } from "@bandeira-tech/b3nd-core/url";
+import { DataStoreClient } from "@bandeira-tech/b3nd-save/clients";
+import { MemoryStore } from "@bandeira-tech/b3nd-save/memory";
 
 const client = new DataStoreClient(new MemoryStore());
 
@@ -62,7 +58,7 @@ mutable://feed/?fn=x-ig.rank&x-ig.cursor=eyJ   → provider extension
 
 Reserved fns: `read`, `ls`, `count`. Anything beginning with `x-` is a
 provider-defined extension. Build urls with the helpers (`count`, `list`,
-`listUris`, `x`) — see [`url.ts`](./libs/b3nd-core/url.ts).
+`listUris`, `x`) — see [`src/url/url.ts`](./src/url/url.ts).
 
 ```typescript
 import { count, list, listUris, x } from "@bandeira-tech/b3nd-core/url";
@@ -201,23 +197,19 @@ const rig = new Rig({
 
 ### HTTP API
 
+Core ships no HTTP/WS transports of its own — they live in
+`@bandeira-tech/b3nd-move` and consume a rig (or any
+`ProtocolInterfaceNode`) over the wire-stable PIN interface:
+
 ```typescript
-import { httpApi } from "@bandeira-tech/b3nd-core";
+import { httpService } from "@bandeira-tech/b3nd-move/http/service";
 
-Deno.serve({ port: 9942 }, httpApi(rig));
+Deno.serve({ port: 9942 }, httpService(rig));
 ```
 
-Endpoints:
-
-```
-GET  /api/v1/status                → rig.status()
-POST /api/v1/receive               → rig.receive([[uri, payload], ...])
-POST /api/v1/read                  → body { urls } → ReadResult[]
-GET  /api/v1/observe/:pattern      → SSE stream of { uri } events
-```
-
-Returns a standard `(Request) => Promise<Response>` handler. Works with
-Deno.serve, Hono, Express, Cloudflare Workers.
+See [b3nd-move](https://github.com/bandeira-tech/b3nd-move) for HTTP,
+WebSocket, gRPC-HTTP, and MCP transports — all framework-agnostic
+`(Request) => Promise<Response>` handlers.
 
 ### Network
 
@@ -231,24 +223,24 @@ const stop = network(localRig, [
 ], [flood()]);
 ```
 
-## Libraries
+## Modules
 
-| Library               | Description                                                               |
-| --------------------- | ------------------------------------------------------------------------- |
-| `b3nd-core`           | Types, url grammar, encoding primitives, client base classes, ObserveEmitter |
-| `b3nd-rig`            | Rig, Identity, connections, hooks, events, reactions, HTTP API, factories |
-| `b3nd-network`        | `network()`, `peer()`, flood, path-vector, tell-and-read policies         |
-| `b3nd-client-memory`  | In-memory Store (no external dependencies)                                |
-| `b3nd-client-http`    | HTTP transport client                                                     |
-| `b3nd-client-ws`      | WebSocket transport client with reconnection                              |
-| `b3nd-client-console` | Console output (write-only, for debugging)                                |
-| `b3nd-testing`        | Shared test suites and helpers                                            |
-| `b3nd-encrypt`        | Ed25519 signing, X25519 encryption, AES-GCM, PBKDF2                       |
+| Module             | What's in it                                                            |
+| ------------------ | ----------------------------------------------------------------------- |
+| `types`            | `ProtocolInterfaceNode`, `Output`, `Message`, `B3ndError`, `Errors`, …  |
+| `url`              | URL grammar + helpers (`count`, `list`, `listUris`, `x`, `parseUrl`)    |
+| `encoding`         | Base64 / hex primitives                                                 |
+| `hash`             | SHA-256                                                                 |
+| `encrypt`          | Ed25519 signing, X25519 encryption, AES-GCM, PBKDF2                     |
+| `rig`              | Rig, Identity, connections, hooks, events, reactions                    |
+| `identity`         | `Identity` (re-export of `rig/identity`)                                |
+| `network`          | `network()`, `peer()`, flood, path-vector, tell-and-read                |
+| `client-console`   | Console output client (write-only, debug sink)                          |
 
-Server-side composition and transports live in
-[@bandeira-tech/b3nd-servers](https://github.com/bandeira-tech/b3nd-servers).
-Core itself only ships the pure `httpApi(rig)` request handler — feed it to any
-HTTP runtime (Deno, Hono, Express, Cloudflare Workers, …).
+Stores (Postgres, SQLite, S3, IndexedDB, …) and Store→PIN client adapters
+live in [@bandeira-tech/b3nd-save](https://github.com/bandeira-tech/b3nd-save).
+HTTP, WebSocket, gRPC-HTTP, and MCP transports live in
+[@bandeira-tech/b3nd-move](https://github.com/bandeira-tech/b3nd-move).
 
 ## Subpath Exports
 
@@ -257,7 +249,10 @@ import { ... } from "@bandeira-tech/b3nd-core";              // everything
 import type { ... } from "@bandeira-tech/b3nd-core/types";    // types only
 import { ... } from "@bandeira-tech/b3nd-core/url";           // url grammar + helpers
 import { ... } from "@bandeira-tech/b3nd-core/encoding";      // base64 / hex primitives
-import { ... } from "@bandeira-tech/b3nd-core/binary";        // opt-in binary content codec (not framework)
+import { ... } from "@bandeira-tech/b3nd-core/hash";          // sha256
+import { ... } from "@bandeira-tech/b3nd-core/encrypt";       // signing, encryption
+import { ... } from "@bandeira-tech/b3nd-core/rig";           // Rig + connections
+import { ... } from "@bandeira-tech/b3nd-core/identity";      // Identity
 import { ... } from "@bandeira-tech/b3nd-core/network";       // network primitives
 import { ... } from "@bandeira-tech/b3nd-core/client-console"; // console client
 ```
@@ -274,17 +269,16 @@ and capability advertisement.
 ```bash
 deno task test        # Run tests
 deno task check       # Type check
-deno fmt --check mod.ts libs/
-deno lint mod.ts libs/
+deno fmt --check mod.ts src/
+deno lint mod.ts src/
 ```
 
 ## Project Structure
 
 ```
 mod.ts          # Main entry point + subpath re-exports
-rig.ts          # Rig subpath
-client-*.ts     # Client subpaths
-libs/           # Source for all libraries (see table above)
+src/            # One folder per module (types, url, rig, network, …)
+scripts/        # Build tooling (build-npm.ts)
 ```
 
 ## Related

@@ -21,23 +21,20 @@ await emptyDir("./npm");
 await build({
   entryPoints: [
     { name: ".", path: "./mod.ts" },
-    { name: "./types", path: "./libs/b3nd-core/types.ts" },
-    { name: "./url", path: "./libs/b3nd-core/url.ts" },
-    { name: "./encoding", path: "./libs/b3nd-core/encoding.ts" },
-    { name: "./hash", path: "./hash.ts" },
-    { name: "./encrypt", path: "./encrypt.ts" },
-    { name: "./network", path: "./libs/b3nd-network/mod.ts" },
-    { name: "./rig", path: "./rig.ts" },
-    { name: "./identity", path: "./libs/b3nd-rig/identity.ts" },
-    { name: "./client-http", path: "./client-http.ts" },
-    { name: "./client-ws", path: "./client-ws.ts" },
-    { name: "./client-memory", path: "./libs/b3nd-client-memory/store.ts" },
-    { name: "./client-console", path: "./libs/b3nd-client-console/mod.ts" },
+    { name: "./types", path: "./src/types/types.ts" },
+    { name: "./url", path: "./src/url/url.ts" },
+    { name: "./encoding", path: "./src/encoding/encoding.ts" },
+    { name: "./hash", path: "./src/hash/hash.ts" },
+    { name: "./encrypt", path: "./src/encrypt/mod.ts" },
+    { name: "./network", path: "./src/network/mod.ts" },
+    { name: "./rig", path: "./src/rig/mod.ts" },
+    { name: "./identity", path: "./src/rig/identity.ts" },
+    { name: "./client-console", path: "./src/client-console/mod.ts" },
   ],
   outDir: "./npm",
   // Deno.* types aren't in the published surface (verified) — no shim needed.
   shims: { deno: false },
-  // Tests live under libs/ and are Deno-only; skip the Node test build.
+  // Tests live under src/ and are Deno-only; skip the Node test build.
   test: false,
   // Don't generate a separate CommonJS build — modern Node + bundlers want ESM.
   scriptModule: false,
