@@ -258,7 +258,7 @@ export interface ProtocolInterfaceNode {
 }
 
 // HttpClientConfig, WebSocketClientConfig, WebSocketRequest, and
-// WebSocketResponse moved to @bandeira-tech/b3nd-servers in 0.17
+// WebSocketResponse moved to @bandeira-tech/b3nd-move in 0.17
 // (each lives next to its client implementation).
 // Store, StoreEntry, StoreWriteResult, StoreCapabilities moved to
 // @bandeira-tech/b3nd-save in 0.18 — Store is an internal abstraction
@@ -376,4 +376,4 @@ export interface ContentData<T = unknown> {
 }
 
 // WebSocketRequest / WebSocketResponse moved to
-// @bandeira-tech/b3nd-servers/ws/client in 0.17.
+// @bandeira-tech/b3nd-move/ws/client in 0.17.

@@ -66,5 +66,5 @@ export { RigEventEmitter } from "./events.ts";
 export type { ReactionHandler } from "./reactions.ts";
 export { matchPattern, ReactionRegistry } from "./reactions.ts";
 
-// httpApi moved to @bandeira-tech/b3nd-servers/http/api in 0.17.
-// Backend factory moved to @bandeira-tech/b3nd-stores/factory in 0.16.
+// httpApi moved to @bandeira-tech/b3nd-move/http/service in 0.17.
+// Backend factory moved to @bandeira-tech/b3nd-save/factory in 0.16.
