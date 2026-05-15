@@ -29,15 +29,12 @@ await build({
     { name: "./network", path: "./src/network/mod.ts" },
     { name: "./rig", path: "./src/rig/mod.ts" },
     { name: "./identity", path: "./src/rig/identity.ts" },
-    { name: "./client-http", path: "./client-http.ts" },
-    { name: "./client-ws", path: "./client-ws.ts" },
-    { name: "./client-memory", path: "./libs/b3nd-client-memory/store.ts" },
     { name: "./client-console", path: "./src/client-console/mod.ts" },
   ],
   outDir: "./npm",
   // Deno.* types aren't in the published surface (verified) — no shim needed.
   shims: { deno: false },
-  // Tests live under libs/ and are Deno-only; skip the Node test build.
+  // Tests live under src/ and are Deno-only; skip the Node test build.
   test: false,
   // Don't generate a separate CommonJS build — modern Node + bundlers want ESM.
   scriptModule: false,
