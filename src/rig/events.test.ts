@@ -1,6 +1,15 @@
 import { assertEquals } from "@std/assert";
-import type { RigEvent } from "./events.ts";
+import type { RigEvent, RigEventName } from "./events.ts";
 import { RigEventEmitter } from "./events.ts";
+
+function captureWarn(): { warnings: unknown[][]; restore: () => void } {
+  const warnings: unknown[][] = [];
+  const original = console.warn;
+  console.warn = (...args: unknown[]) => {
+    warnings.push(args);
+  };
+  return { warnings, restore: () => (console.warn = original) };
+}
 
 Deno.test("RigEventEmitter - on fires handler", async () => {
   const emitter = new RigEventEmitter();
@@ -85,22 +94,123 @@ Deno.test("RigEventEmitter - wildcard *:error fires for all errors", async () =>
   assertEquals(received.length, 2);
 });
 
-Deno.test("RigEventEmitter - handler errors are swallowed", async () => {
+Deno.test("RigEventEmitter - one handler throwing doesn't stop the others", async () => {
   const emitter = new RigEventEmitter();
   const received: RigEvent[] = [];
+  const { warnings, restore } = captureWarn();
 
-  // This handler throws
-  emitter.on("send:success", () => {
-    throw new Error("handler error");
+  try {
+    emitter.on("send:success", () => {
+      throw new Error("handler error");
+    });
+    emitter.on("send:success", (e) => {
+      received.push(e);
+    });
+
+    emitter.emit("send:success", { op: "send", ts: 1 });
+    await new Promise((r) => setTimeout(r, 10));
+
+    assertEquals(received.length, 1); // sibling handler still ran
+    assertEquals(warnings.length, 1); // error surfaced via console.warn fallback
+  } finally {
+    restore();
+  }
+});
+
+Deno.test("RigEventEmitter - onHandlerError receives handler errors", async () => {
+  const emitter = new RigEventEmitter();
+  const seen: { error: unknown; event: RigEventName }[] = [];
+  emitter.onHandlerError((error, event) => {
+    seen.push({ error, event });
   });
-  // This handler should still fire
-  emitter.on("send:success", (e) => {
-    received.push(e);
+
+  emitter.on("send:success", () => {
+    throw new Error("boom");
   });
 
   emitter.emit("send:success", { op: "send", ts: 1 });
   await new Promise((r) => setTimeout(r, 10));
-  assertEquals(received.length, 1); // second handler still ran
+
+  assertEquals(seen.length, 1);
+  assertEquals((seen[0].error as Error).message, "boom");
+  assertEquals(seen[0].event, "send:success");
+});
+
+Deno.test("RigEventEmitter - onHandlerError suppresses console.warn fallback", async () => {
+  const emitter = new RigEventEmitter();
+  const { warnings, restore } = captureWarn();
+
+  try {
+    emitter.onHandlerError(() => {});
+    emitter.on("send:success", () => {
+      throw new Error("boom");
+    });
+
+    emitter.emit("send:success", { op: "send", ts: 1 });
+    await new Promise((r) => setTimeout(r, 10));
+
+    assertEquals(warnings.length, 0);
+  } finally {
+    restore();
+  }
+});
+
+Deno.test("RigEventEmitter - onHandlerError unsubscribe restores fallback", async () => {
+  const emitter = new RigEventEmitter();
+  const { warnings, restore } = captureWarn();
+
+  try {
+    const unsub = emitter.onHandlerError(() => {});
+    unsub();
+    emitter.on("send:success", () => {
+      throw new Error("boom");
+    });
+
+    emitter.emit("send:success", { op: "send", ts: 1 });
+    await new Promise((r) => setTimeout(r, 10));
+
+    assertEquals(warnings.length, 1);
+  } finally {
+    restore();
+  }
+});
+
+Deno.test("RigEventEmitter - throwing onHandlerError listener falls back to warn, doesn't recurse", async () => {
+  const emitter = new RigEventEmitter();
+  const { warnings, restore } = captureWarn();
+
+  try {
+    emitter.onHandlerError(() => {
+      throw new Error("listener boom");
+    });
+    emitter.on("send:success", () => {
+      throw new Error("handler boom");
+    });
+
+    emitter.emit("send:success", { op: "send", ts: 1 });
+    await new Promise((r) => setTimeout(r, 10));
+
+    // Exactly one warn — from the secondary catch — proving no recursion.
+    assertEquals(warnings.length, 1);
+  } finally {
+    restore();
+  }
+});
+
+Deno.test("RigEventEmitter - pending() does not retain settled promises", async () => {
+  // Regression: an earlier version pruned with `p.then(() => settled = true)`
+  // and read `settled` synchronously, so the filter never dropped anything
+  // and inflight grew unboundedly.
+  const emitter = new RigEventEmitter();
+  emitter.on("send:success", () => {});
+
+  for (let i = 0; i < 200; i++) {
+    emitter.emit("send:success", { op: "send", ts: i });
+  }
+  await new Promise((r) => setTimeout(r, 20));
+
+  const pending = emitter.pending();
+  assertEquals(pending.length, 0);
 });
 
 Deno.test("RigEventEmitter - multiple handlers for same event", async () => {
