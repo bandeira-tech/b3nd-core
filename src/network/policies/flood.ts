@@ -45,7 +45,6 @@
  */
 
 import type {
-  Message,
   Output,
   ProtocolInterfaceNode,
   ReceiveResult,
@@ -84,7 +83,7 @@ function isEmptyPayload(payload: unknown): boolean {
  * Internal shared implementation used by `flood`, `pathVector`, and
  * `tellAndRead.outbound`. The `transform` rewrites the per-peer
  * outbound batch: return `msgs` unchanged to flood as-is, return a
- * subset to filter, return rewritten messages to change what the peer
+ * subset to filter, return rewritten outputs to change what the peer
  * receives, or return `[]` to skip the peer entirely.
  *
  * @internal
@@ -92,12 +91,12 @@ function isEmptyPayload(payload: unknown): boolean {
 export function floodImpl(
   originId: string,
   peers: readonly Peer[],
-  transform: (msgs: Message[], peer: Peer) => Message[],
+  transform: (msgs: Output[], peer: Peer) => Output[],
 ): ProtocolInterfaceNode {
   return {
     // ── receive ──────────────────────────────────────────────────────
 
-    async receive(msgs: Message[]): Promise<ReceiveResult[]> {
+    async receive(msgs: Output[]): Promise<ReceiveResult[]> {
       if (msgs.length === 0) return [];
 
       await Promise.all(peers.map(async (p) => {

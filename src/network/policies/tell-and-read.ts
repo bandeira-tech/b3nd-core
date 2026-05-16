@@ -82,7 +82,6 @@
  */
 
 import type {
-  Message,
   Output,
   ProtocolInterfaceNode,
 } from "../../types/types.ts";
@@ -92,7 +91,7 @@ import { floodImpl } from "./flood.ts";
 
 export interface TellAndReadOptions {
   /**
-   * Transform outbound messages per peer. Return the messages that
+   * Transform outbound outputs per peer. Return the outputs that
    * should actually be sent to this peer: pass-through (`msgs`), a
    * filtered subset, or rewritten announcements. Return `[]` to skip
    * the peer entirely.
@@ -100,7 +99,7 @@ export interface TellAndReadOptions {
    * Defaults to identity — `tellAndRead` without an `announce` is
    * effectively `flood` on the outbound side.
    */
-  announce?: (msgs: Message[], peer: Peer) => Message[];
+  announce?: (msgs: Output[], peer: Peer) => Output[];
 
   /**
    * Examine an inbound event. Return:
@@ -134,8 +133,8 @@ export function tellAndRead(opts: TellAndReadOptions): TellAndReadBundle {
     outbound(peers) {
       const { originId, peers: frozen } = validatePeers(peers);
       const transform = announce
-        ? (msgs: Message[], peer: Peer) => announce(msgs, peer)
-        : (msgs: Message[]) => msgs;
+        ? (msgs: Output[], peer: Peer) => announce(msgs, peer)
+        : (msgs: Output[]) => msgs;
       return floodImpl(originId, frozen, transform);
     },
 

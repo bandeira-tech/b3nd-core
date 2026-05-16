@@ -76,11 +76,6 @@ export type Output<T = unknown> = [
 ];
 
 /**
- * Message — alias for Output. A message is an addressed output.
- */
-export type Message<D = unknown> = Output<D>;
-
-/**
  * Read function for storage lookups.
  *
  * Single-url convenience used by program authors — wraps
@@ -94,9 +89,9 @@ export type ReadFn = <T = unknown>(
 ) => Promise<Output<T>>;
 
 /**
- * Receive function — batch of messages through the rig pipeline.
+ * Receive function — batch of outputs through the rig pipeline.
  */
-export type ReceiveFn = (msgs: Message[]) => Promise<ReceiveResult[]>;
+export type ReceiveFn = (msgs: Output[]) => Promise<ReceiveResult[]>;
 
 // ── Program model ───────────────────────────────────────────────────
 
@@ -174,18 +169,18 @@ export interface ReceiveResult {
  */
 export interface ProtocolInterfaceNode {
   /**
-   * Receive a batch of messages — the unified entry point for all state changes.
+   * Receive a batch of outputs — the unified entry point for all state changes.
    *
-   * Each message is [uri, payload]. Clients interpret the payload per their
+   * Each output is [uri, payload]. Clients interpret the payload per their
    * role (storage clients persist, audit clients append, forwarders forward).
-   * Returns one ReceiveResult per message.
+   * Returns one ReceiveResult per output.
    *
    * The return type is `PromiseLike` (not `Promise`) so implementations
    * can return richer await-targets — e.g., the Rig returns an
    * `OperationHandle` that's awaitable AND exposes per-route events.
    * Plain `Promise<ReceiveResult[]>` still satisfies the contract.
    */
-  receive(msgs: Message[]): PromiseLike<ReceiveResult[]>;
+  receive(msgs: Output[]): PromiseLike<ReceiveResult[]>;
 
   /**
    * Read a batch of urls. A url is a uri plus a query string of read

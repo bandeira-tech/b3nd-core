@@ -19,7 +19,7 @@
  * swapped.
  */
 
-import type { Message, Output, ProtocolInterfaceNode } from "../types/types.ts";
+import type { Output, ProtocolInterfaceNode } from "../types/types.ts";
 
 /**
  * A peer is a client plus a stable id used for local routing control.
@@ -121,6 +121,3 @@ export interface NetworkOptions {
  * ```
  */
 export type StrategyFactory = (peers: Peer[]) => ProtocolInterfaceNode;
-
-// Re-export Message for policy hook signatures that need it.
-export type { Message };

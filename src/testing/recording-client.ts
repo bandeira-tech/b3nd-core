@@ -27,7 +27,6 @@
  */
 
 import type {
-  Message,
   Output,
   ProtocolInterfaceNode,
   ReceiveResult,
@@ -36,7 +35,7 @@ import type {
 
 /** A single recorded invocation against a RecordingClient. */
 export type RecordedCall =
-  | { method: "receive"; msgs: Message[] }
+  | { method: "receive"; msgs: Output[] }
   | { method: "read"; urls: string[] }
   | { method: "observe"; urls: string[] }
   | { method: "status" };
@@ -51,7 +50,7 @@ export type RecordedCallOf<M extends RecordedCall["method"]> = Extract<
  * Optional canned responses for a RecordingClient. Any handler not
  * provided falls back to a sensible default:
  *
- * - `receive` → `{ accepted: true }` per message
+ * - `receive` → `{ accepted: true }` per output
  * - `read`    → `[url, undefined]` per url (miss, per the package-wide
  *               convention)
  * - `observe` → empty async iterable that closes on signal abort
@@ -59,7 +58,7 @@ export type RecordedCallOf<M extends RecordedCall["method"]> = Extract<
  */
 export interface RecordingClientFixtures {
   receive?: (
-    msgs: Message[],
+    msgs: Output[],
   ) => ReceiveResult[] | Promise<ReceiveResult[]>;
   read?: (
     urls: string[],
@@ -93,7 +92,7 @@ export class RecordingClient implements ProtocolInterfaceNode {
 
   // ── ProtocolInterfaceNode impl ───────────────────────────────────
 
-  async receive(msgs: Message[]): Promise<ReceiveResult[]> {
+  async receive(msgs: Output[]): Promise<ReceiveResult[]> {
     this.calls.push({ method: "receive", msgs });
     return this.fixtures.receive
       ? await this.fixtures.receive(msgs)
