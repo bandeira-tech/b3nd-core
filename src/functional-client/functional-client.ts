@@ -7,7 +7,6 @@
  */
 
 import type {
-  Message,
   Output,
   ProtocolInterfaceNode,
   ReceiveResult,
@@ -19,7 +18,7 @@ import type {
  * Each method is optional — missing methods return sensible defaults.
  */
 export interface FunctionalClientConfig {
-  receive?: (msgs: Message[]) => Promise<ReceiveResult[]>;
+  receive?: (msgs: Output[]) => Promise<ReceiveResult[]>;
   read?: <T = unknown>(urls: string[]) => Promise<Output<T>[]>;
   observe?: (
     urls: string[],
@@ -51,7 +50,7 @@ export class FunctionalClient implements ProtocolInterfaceNode {
     this.config = config;
   }
 
-  receive(msgs: Message[]): Promise<ReceiveResult[]> {
+  receive(msgs: Output[]): Promise<ReceiveResult[]> {
     if (this.config.receive) {
       return this.config.receive(msgs);
     }

@@ -7,7 +7,7 @@
 
 import { assertEquals } from "@std/assert";
 import { FunctionalClient } from "./functional-client.ts";
-import type { Message, Output } from "../types/types.ts";
+import type { Output } from "../types/types.ts";
 import { parseUrl } from "../url/url.ts";
 
 // ============================================================================
@@ -39,7 +39,7 @@ Deno.test("FunctionalClient - status defaults to healthy", async () => {
 // ============================================================================
 
 Deno.test("FunctionalClient - custom receive is called", async () => {
-  const calls: Message[] = [];
+  const calls: Output[] = [];
   const client = new FunctionalClient({
     receive: (msgs) => {
       for (const msg of msgs) calls.push(msg);
@@ -47,7 +47,7 @@ Deno.test("FunctionalClient - custom receive is called", async () => {
     },
   });
 
-  const msg: Message = ["mutable://users/alice", { name: "Alice" }];
+  const msg: Output = ["mutable://users/alice", { name: "Alice" }];
   const result = await client.receive([msg]);
   assertEquals(result[0].accepted, true);
   assertEquals(calls.length, 1);

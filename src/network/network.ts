@@ -24,7 +24,7 @@
  * build the remote-client shape for `connection()`.
  */
 
-import type { Message, Output, ProtocolInterfaceNode } from "../types/types.ts";
+import type { Output, ProtocolInterfaceNode } from "../types/types.ts";
 import type { InboundCtx, NetworkOptions, Peer, Policy } from "./types.ts";
 
 /**
@@ -159,9 +159,8 @@ async function forward(
   onError: (err: Error, ctx: { peerId?: string }) => void,
   peerId: string,
 ): Promise<void> {
-  const msg: Message = ev as Message;
   try {
-    await target.receive([msg]);
+    await target.receive([ev]);
   } catch (err) {
     onError(toError(err), { peerId });
   }

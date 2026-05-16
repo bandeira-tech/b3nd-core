@@ -74,7 +74,7 @@ Deno.test("callsOf filters by method and preserves typing", async () => {
 
   const receives = client.callsOf("receive");
   assertEquals(receives.length, 2);
-  // Typed access: receives[0].msgs is Message[] without any cast.
+  // Typed access: receives[0].msgs is Output[] without any cast.
   assertEquals(receives[0].msgs[0], ["a", 1]);
 
   const reads = client.callsOf("read");

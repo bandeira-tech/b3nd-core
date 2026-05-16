@@ -20,7 +20,6 @@
  */
 
 import type {
-  Message,
   Output,
   ProtocolInterfaceNode,
   ReceiveResult,
@@ -48,7 +47,7 @@ export class ConsoleClient implements ProtocolInterfaceNode {
     this.log = logger ?? console.log;
   }
 
-  receive(msgs: Message[]): Promise<ReceiveResult[]> {
+  receive(msgs: Output[]): Promise<ReceiveResult[]> {
     const results: ReceiveResult[] = [];
 
     for (const [uri, payload] of msgs) {

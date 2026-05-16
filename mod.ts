@@ -15,7 +15,6 @@ export type {
   CodeHandler,
   DeleteResult,
   HealthStatus,
-  Message,
   Output,
   Program,
   ProgramResult,

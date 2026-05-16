@@ -10,20 +10,20 @@
 /// <reference lib="deno.ns" />
 
 import { assertEquals } from "@std/assert";
-import type { Message, ProtocolInterfaceNode } from "../../types/types.ts";
+import type { Output, ProtocolInterfaceNode } from "../../types/types.ts";
 import { pathVector } from "./path-vector.ts";
 import { peer } from "../mod.ts";
 import type { Peer } from "../mod.ts";
 
 /**
- * A peer whose `client.receive` records every message it sees. Lets us
- * assert which peers received which messages under a given chain.
+ * A peer whose `client.receive` records every output it sees. Lets us
+ * assert which peers received which outputs under a given chain.
  */
 function recordingPeer(id: string): {
   peer: Peer;
-  received: Message[];
+  received: Output[];
 } {
-  const received: Message[] = [];
+  const received: Output[] = [];
   const client: ProtocolInterfaceNode = {
     receive: (msgs) => {
       received.push(...msgs);
@@ -41,7 +41,7 @@ function recordingPeer(id: string): {
  * contains the given pubkeys in order. Signatures are fake — pathVector
  * only reads pubkeys, it does not verify.
  */
-function authMsg(uri: string, signers: string[]): Message {
+function authMsg(uri: string, signers: string[]): Output {
   return [
     uri,
     {
@@ -82,10 +82,10 @@ Deno.test("pathVector handles multi-hop chains", async () => {
 
 // ── no-op paths ──────────────────────────────────────────────────────
 
-Deno.test("pathVector passes through messages lacking an auth chain", async () => {
+Deno.test("pathVector passes through outputs lacking an auth chain", async () => {
   const a = recordingPeer("pk-A");
   const npi = pathVector([a.peer]);
-  const plain: Message = ["mutable://x/1", { no: "auth here" }];
+  const plain: Output = ["mutable://x/1", { no: "auth here" }];
 
   await npi.receive([plain]);
   assertEquals(a.received.length, 1);
@@ -94,8 +94,8 @@ Deno.test("pathVector passes through messages lacking an auth chain", async () =
 Deno.test("pathVector treats malformed auth as empty chain", async () => {
   const a = recordingPeer("pk-A");
   const npi = pathVector([a.peer]);
-  const weird1: Message = ["mutable://x/1", { auth: "not-an-array" }];
-  const weird2: Message = [
+  const weird1: Output = ["mutable://x/1", { auth: "not-an-array" }];
+  const weird2: Output = [
     "mutable://x/1",
     { auth: [{ no_pubkey: true }, { pubkey: 42 }] },
   ];
@@ -107,7 +107,7 @@ Deno.test("pathVector treats malformed auth as empty chain", async () => {
 Deno.test("pathVector handles null data gracefully", async () => {
   const a = recordingPeer("pk-A");
   const npi = pathVector([a.peer]);
-  const plain: Message = ["mutable://x/1", null];
+  const plain: Output = ["mutable://x/1", null];
 
   await npi.receive([plain]);
   assertEquals(a.received.length, 1);
@@ -115,12 +115,12 @@ Deno.test("pathVector handles null data gracefully", async () => {
 
 // ── mixed batch ──────────────────────────────────────────────────────
 
-Deno.test("pathVector filters per-message within a batch", async () => {
+Deno.test("pathVector filters per-output within a batch", async () => {
   const a = recordingPeer("pk-A");
   const npi = pathVector([a.peer]);
   const filtered = authMsg("mutable://x/1", ["pk-A"]);
   const passed = authMsg("mutable://x/2", ["pk-B"]);
-  const plain: Message = ["mutable://x/3", "bare"];
+  const plain: Output = ["mutable://x/3", "bare"];
 
   await npi.receive([filtered, passed, plain]);
   assertEquals(a.received.length, 2);

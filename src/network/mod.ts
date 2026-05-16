@@ -15,7 +15,6 @@
 
 export type {
   InboundCtx,
-  Message,
   NetworkOptions,
   Peer,
   PeerDecorator,

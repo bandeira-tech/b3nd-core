@@ -30,7 +30,7 @@
  * identity's signature on relay — that's the application's responsibility.
  */
 
-import type { Message, ProtocolInterfaceNode } from "../../types/types.ts";
+import type { Output, ProtocolInterfaceNode } from "../../types/types.ts";
 import type { Peer } from "../types.ts";
 import { validatePeers } from "../network.ts";
 import { floodImpl } from "./flood.ts";
@@ -47,9 +47,9 @@ export function pathVector(peers: Peer[]): ProtocolInterfaceNode {
 /**
  * Extract the list of signer pubkeys from an `AuthenticatedMessage`-
  * shaped payload. Returns `[]` for any payload that doesn't carry an
- * `auth` array — non-authenticated messages flow freely.
+ * `auth` array — non-authenticated outputs flow freely.
  */
-function signerChain(msg: Message): string[] {
+function signerChain(msg: Output): string[] {
   const [, payload] = msg;
   if (!payload || typeof payload !== "object") return [];
   const auth = (payload as { auth?: unknown }).auth;
