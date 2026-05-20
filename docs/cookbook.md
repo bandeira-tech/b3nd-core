@@ -120,15 +120,15 @@ The cursor lives in the url, which means a deep-linkable feed page just works:
 
 ## Watch a uri for changes
 
-Observe yields `Output<string[]>` packages — `[inputUrl, uris]` — INV-style. The
-first element echoes the subscription url that matched (so a single
-`observe([a, b])` call can dispatch by `a` vs `b`); the second is the list of
-uris that fired in this batch.
+Observe yields `readonly string[]` batches of uris that fired — INV-style. The
+default emitter sends one uri per yield; backends with cheap batching can
+coalesce. Which of your subscription urls matched is not surfaced — re-run the
+match locally if you need that routing.
 
 ```ts
 const ac = new AbortController();
 for await (
-  const [, uris] of pin.observe(["instagram://posts/p123/likes/*"], ac.signal)
+  const uris of pin.observe(["instagram://posts/p123/likes/*"], ac.signal)
 ) {
   // The likes prefix changed; recompute the count.
   const [c] = await pin.read(["instagram://posts/p123/likes/?fn=count"]);

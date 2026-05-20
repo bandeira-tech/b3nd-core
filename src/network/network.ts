@@ -104,7 +104,7 @@ async function runPeer(
     .filter((r): r is NonNullable<typeof r> => r !== undefined);
 
   try {
-    for await (const [, uris] of peer.client.observe([pattern], signal)) {
+    for await (const uris of peer.client.observe([pattern], signal)) {
       if (signal.aborted) break;
       // INV bundles: the observe event lists uris that changed. Pull
       // the current state from the peer for each so policies see

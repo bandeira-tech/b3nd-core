@@ -63,7 +63,7 @@ Deno.test("bestEffort passes through observe unchanged (not a silent no-op)", as
     receive: (m) => Promise.resolve(m.map(() => ({ accepted: true }))),
     read: () => Promise.resolve([]),
     async *observe() {
-      yield ["*", ["mutable://x/1"]] as Output<string[]>;
+      yield ["mutable://x/1"] as readonly string[];
     },
     status: () => Promise.resolve({ status: "healthy" as const }),
   };
@@ -72,7 +72,7 @@ Deno.test("bestEffort passes through observe unchanged (not a silent no-op)", as
   const ac = new AbortController();
   const seen: string[] = [];
   for await (const r of wrapped.observe(["*"], ac.signal)) {
-    seen.push(...r[1]);
+    seen.push(...r);
     break;
   }
   assertEquals(seen, ["mutable://x/1"]);

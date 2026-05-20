@@ -69,13 +69,13 @@ export class ConsoleClient implements ProtocolInterfaceNode {
   observe(
     _urls: string[],
     _signal?: AbortSignal,
-  ): AsyncIterable<Output<string[]>> {
+  ): AsyncIterable<readonly string[]> {
     return {
       [Symbol.asyncIterator]() {
         return {
           next: () =>
             Promise.resolve({
-              value: undefined as unknown as Output<string[]>,
+              value: undefined as unknown as readonly string[],
               done: true,
             }),
         };

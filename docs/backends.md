@@ -13,7 +13,8 @@ network-fronted node, an aggregating client, etc.) for b3nd.
 The framework is small — four primitives — and one shape:
 
 > **Everything is `Output`.** `Output<T> = [uri, payload]`. `receive` takes
-> `Output[]`, `read` returns `Output[]`, `observe` yields `Output<string[]>`.
+> `Output[]`, `read` returns `Output[]`, `observe` yields `readonly string[]`
+> batches of uris.
 > There is no separate result envelope, no `success`/`error` discriminator at
 > the framework level. Failures are either thrown (transport / programmer
 > errors) or expressed inside the payload by protocol convention. The framework
@@ -56,7 +57,7 @@ interface ProtocolInterfaceNode {
   observe(
     urls: string[],
     signal: AbortSignal,
-  ): AsyncIterable<Output<string[]>>;
+  ): AsyncIterable<readonly string[]>;
   status(): Promise<StatusResult>;
 }
 ```

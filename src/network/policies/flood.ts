@@ -144,8 +144,8 @@ export function floodImpl(
     async *observe(
       urls: string[],
       signal: AbortSignal,
-    ): AsyncIterable<Output<string[]>> {
-      const queue: Output<string[]>[] = [];
+    ): AsyncIterable<readonly string[]> {
+      const queue: (readonly string[])[] = [];
       let wake: (() => void) | null = null;
 
       const forwarders = peers.map(async (p) => {
