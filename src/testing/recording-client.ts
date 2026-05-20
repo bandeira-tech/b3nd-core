@@ -66,7 +66,7 @@ export interface RecordingClientFixtures {
   observe?: (
     urls: string[],
     signal: AbortSignal,
-  ) => AsyncIterable<Output<string[]>>;
+  ) => AsyncIterable<readonly string[]>;
   status?: () => StatusResult | Promise<StatusResult>;
 }
 
@@ -110,7 +110,7 @@ export class RecordingClient implements ProtocolInterfaceNode {
   observe(
     urls: string[],
     signal: AbortSignal,
-  ): AsyncIterable<Output<string[]>> {
+  ): AsyncIterable<readonly string[]> {
     this.calls.push({ method: "observe", urls });
     if (this.fixtures.observe) return this.fixtures.observe(urls, signal);
     // Default: an empty stream that resolves cleanly on abort. Test
@@ -119,9 +119,9 @@ export class RecordingClient implements ProtocolInterfaceNode {
     // Implemented as a hand-rolled async iterator so the lint check
     // for `yield` in async generators doesn't trip on the empty body.
     return {
-      [Symbol.asyncIterator](): AsyncIterator<Output<string[]>> {
+      [Symbol.asyncIterator](): AsyncIterator<readonly string[]> {
         return {
-          async next(): Promise<IteratorResult<Output<string[]>>> {
+          async next(): Promise<IteratorResult<readonly string[]>> {
             if (signal.aborted) return { value: undefined, done: true };
             await new Promise<void>((resolve) => {
               signal.addEventListener("abort", () => resolve(), {

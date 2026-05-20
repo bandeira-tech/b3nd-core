@@ -102,14 +102,14 @@ sub-paths.
 
 ### Observe (INV-style)
 
-`observe` yields `Output<string[]>` packages — `[inputUrl, uris]` — where
-`inputUrl` echoes the caller's subscription url whose pattern matched and
-`uris` is the list of uris that changed in this batch. Read each uri to learn
-its current state.
+`observe` yields `readonly string[]` batches of uris that fired — INV-style.
+Default emission is one uri per yield; backends with cheap batching can
+coalesce. Which subscription url matched is not surfaced (cheap to re-derive
+locally if you need that routing). Read each uri to learn its current state.
 
 ```typescript
 const ac = new AbortController();
-for await (const [, uris] of pin.observe(["mutable://app/*"], ac.signal)) {
+for await (const uris of pin.observe(["mutable://app/*"], ac.signal)) {
   const outputs = await pin.read(uris);
   for (const [uri, payload] of outputs) console.log(uri, payload);
 }

@@ -42,7 +42,7 @@ Deno.test("ObserveEmitter - yields on matching write", async () => {
   const seen: string[] = [];
   const done = (async () => {
     for await (const r of bus.observe(["mutable://app/:key"], ac.signal)) {
-      seen.push(...r[1]);
+      seen.push(...r);
       ac.abort();
     }
   })();
@@ -61,7 +61,7 @@ Deno.test("ObserveEmitter - deletes surface as a uri notification", async () => 
   const seen: string[] = [];
   const done = (async () => {
     for await (const r of bus.observe(["mutable://app/*"], ac.signal)) {
-      seen.push(...r[1]);
+      seen.push(...r);
       ac.abort();
     }
   })();
@@ -82,7 +82,7 @@ Deno.test("ObserveEmitter - non-matching URIs are ignored", async () => {
   const seen: string[] = [];
   const done = (async () => {
     for await (const r of bus.observe(["mutable://app/:k"], ac.signal)) {
-      seen.push(...r[1]);
+      seen.push(...r);
       ac.abort();
     }
   })();
@@ -102,7 +102,7 @@ Deno.test("ObserveEmitter - aborting terminates the iterator", async () => {
   const done = (async () => {
     const seen: string[] = [];
     for await (const r of bus.observe(["mutable://app/*"], ac.signal)) {
-      seen.push(...r[1]);
+      seen.push(...r);
     }
     return seen;
   })();
@@ -122,13 +122,13 @@ Deno.test("ObserveEmitter - multiple concurrent observers both receive", async (
   const b: string[] = [];
   const p1 = (async () => {
     for await (const r of bus.observe(["mutable://app/:k"], ac1.signal)) {
-      a.push(...r[1]);
+      a.push(...r);
       ac1.abort();
     }
   })();
   const p2 = (async () => {
     for await (const r of bus.observe(["mutable://app/:k"], ac2.signal)) {
-      b.push(...r[1]);
+      b.push(...r);
       ac2.abort();
     }
   })();
@@ -158,7 +158,7 @@ Deno.test("ObserveEmitter - a throwing listener does not break other observers",
   const seen: string[] = [];
   const done = (async () => {
     for await (const r of bus.observe(["mutable://x/:k"], ac.signal)) {
-      seen.push(...r[1]);
+      seen.push(...r);
       if (seen.length >= 2) ac.abort();
     }
   })();
@@ -181,7 +181,7 @@ Deno.test("ObserveEmitter - buffers events emitted before consumer loops back", 
   const seen: string[] = [];
   const done = (async () => {
     for await (const r of bus.observe(["k/:i"], ac.signal)) {
-      seen.push(...r[1]);
+      seen.push(...r);
       // Simulate slow consumer work — forces additional microtask hops
       // between yields so buffering semantics are exercised.
       await Promise.resolve();
@@ -210,7 +210,7 @@ Deno.test("ObserveEmitter - 100 rapid emits arrive in order", async () => {
   const seen: string[] = [];
   const done = (async () => {
     for await (const r of bus.observe(["stress/:i"], ac.signal)) {
-      seen.push(...r[1]);
+      seen.push(...r);
       if (seen.length >= N) ac.abort();
     }
   })();
@@ -232,7 +232,7 @@ Deno.test("ObserveEmitter - buffered events drain before abort terminates the it
   const seen: string[] = [];
   const done = (async () => {
     for await (const r of bus.observe(["q/:i"], ac.signal)) {
-      seen.push(...r[1]);
+      seen.push(...r);
       // Do not abort here — we want the external abort to race with a
       // non-empty queue.
     }
@@ -257,7 +257,7 @@ Deno.test("ObserveEmitter - abort before any emit yields nothing", async () => {
 
   const seen: string[] = [];
   for await (const r of bus.observe(["q/:i"], ac.signal)) {
-    seen.push(...r[1]);
+    seen.push(...r);
   }
   assertEquals(seen, []);
 });

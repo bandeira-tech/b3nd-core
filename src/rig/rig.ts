@@ -734,15 +734,15 @@ export class Rig {
    * @example
    * ```typescript
    * const abort = new AbortController();
-   * for await (const result of rig.observe("mutable://data/market/*", abort.signal)) {
-   *   console.log(result.uri, result.record?.data);
+   * for await (const uris of rig.observe(["mutable://data/market/*"], abort.signal)) {
+   *   for (const uri of uris) console.log(uri);
    * }
    * ```
    */
   async *observe(
     urls: string[],
     signal: AbortSignal,
-  ): AsyncIterable<Output<string[]>> {
+  ): AsyncIterable<readonly string[]> {
     yield* this._dispatch.observe(urls, signal);
   }
 
@@ -967,7 +967,7 @@ function createRouteDispatch(
     async *observe(
       urls: string[],
       signal: AbortSignal,
-    ): AsyncIterable<Output<string[]>> {
+    ): AsyncIterable<readonly string[]> {
       // Group urls by the first connection that accepts them so each
       // connection sees the subset it owns. No aggregation across
       // connections — that is the aggregating client's job.

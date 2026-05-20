@@ -23,7 +23,7 @@ export interface FunctionalClientConfig {
   observe?: (
     urls: string[],
     signal: AbortSignal,
-  ) => AsyncIterable<Output<string[]>>;
+  ) => AsyncIterable<readonly string[]>;
   status?: () => Promise<StatusResult>;
 }
 
@@ -70,7 +70,7 @@ export class FunctionalClient implements ProtocolInterfaceNode {
   async *observe(
     urls: string[],
     signal: AbortSignal,
-  ): AsyncIterable<Output<string[]>> {
+  ): AsyncIterable<readonly string[]> {
     if (this.config.observe) {
       yield* this.config.observe(urls, signal);
     }

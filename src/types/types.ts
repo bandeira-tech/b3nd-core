@@ -218,23 +218,23 @@ export interface ProtocolInterfaceNode {
   read<T = unknown>(urls: string[]): Promise<Output<T>[]>;
 
   /**
-   * Observe a batch of urls. Yields `Output<string[]>` packages —
-   * INV-style bundles of uris that changed under a watched pattern.
-   * The observer reads each uri to learn its current state.
+   * Observe a batch of urls. Yields INV-style batches of uris that
+   * changed under any watched pattern. The observer reads each uri to
+   * learn its current state.
    *
-   * Each yielded `Output` is `[inputUrl, uris]` where `inputUrl` is
-   * one of the caller's subscription urls — the one whose pattern
-   * matched the change — and `uris` is the list of uris that fired
-   * in this batch. A single change matching multiple subscription
-   * urls yields once per matching url. Backends may emit one uri per
-   * package or batch many — the consumer iterates either way.
+   * Each yield is a non-empty `readonly string[]` of concrete uris
+   * that fired in this batch. Backends may emit one uri per yield or
+   * coalesce many — the consumer iterates either way. Which of the
+   * caller's subscription urls matched is not surfaced; the caller
+   * can re-match locally if they need that routing, which keeps the
+   * wire (and in-process surface) minimal.
    *
    * The `signal` controls lifecycle — abort to stop observing.
    *
    * @example
    * ```ts
    * const abort = new AbortController();
-   * for await (const [, uris] of client.observe(["mutable://market/*"], abort.signal)) {
+   * for await (const uris of client.observe(["mutable://market/*"], abort.signal)) {
    *   const outputs = await client.read(uris);
    *   for (const [uri, payload] of outputs) console.log(uri, payload);
    * }
@@ -243,7 +243,7 @@ export interface ProtocolInterfaceNode {
   observe(
     urls: string[],
     signal: AbortSignal,
-  ): AsyncIterable<Output<string[]>>;
+  ): AsyncIterable<readonly string[]>;
 
   /**
    * Status — health + capabilities.

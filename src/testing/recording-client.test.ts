@@ -109,7 +109,7 @@ Deno.test("default observe stream closes on signal abort", async () => {
 
   // Start consuming, then abort — the loop should exit cleanly.
   const consumed = (async () => {
-    const items: Output<string[]>[] = [];
+    const items: (readonly string[])[] = [];
     for await (const item of stream) items.push(item);
     return items;
   })();
@@ -126,23 +126,20 @@ Deno.test("observe respects already-aborted signal", async () => {
   const ac = new AbortController();
   ac.abort();
   const stream = client.observe(["mutable://watch"], ac.signal);
-  const items: Output<string[]>[] = [];
+  const items: (readonly string[])[] = [];
   for await (const item of stream) items.push(item);
   assertEquals(items, []);
 });
 
 Deno.test("observe fixture provides custom stream", async () => {
   const client = new RecordingClient({
-    observe: async function* (urls, _signal) {
-      yield [urls[0], ["mutable://a", "mutable://b"]];
+    observe: async function* (_urls, _signal) {
+      yield ["mutable://a", "mutable://b"];
     },
   });
   const ac = new AbortController();
   const stream = client.observe(["mutable://watch/"], ac.signal);
-  const items: Output<string[]>[] = [];
+  const items: (readonly string[])[] = [];
   for await (const item of stream) items.push(item);
-  assertEquals(items, [[
-    "mutable://watch/",
-    ["mutable://a", "mutable://b"],
-  ]]);
+  assertEquals(items, [["mutable://a", "mutable://b"]]);
 });
