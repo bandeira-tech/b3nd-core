@@ -52,7 +52,24 @@ export { ConsoleClient } from "./src/client-console/client.ts";
 export { Identity } from "./src/rig/identity.ts";
 export type { ExportedIdentity } from "./src/rig/identity.ts";
 export { Rig } from "./src/rig/rig.ts";
-export type { RigConfig, RigInfo, RigRoutes } from "./src/rig/types.ts";
+export type {
+  ConnectionLike,
+  RigConfig,
+  RigInfo,
+  RigRoutes,
+  Route,
+} from "./src/rig/types.ts";
+
+export type { Acceptance } from "./src/rig/acceptance.ts";
+export {
+  and,
+  any,
+  not,
+  or,
+  patterns,
+  prefix,
+  schemas,
+} from "./src/rig/acceptance.ts";
 
 export type {
   HandleEmitEvent,

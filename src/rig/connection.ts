@@ -1,23 +1,25 @@
 /**
  * @module
- * Connection — a client bound to a URI pattern list.
+ * Connection — a client bound to an `Acceptance` predicate.
  *
- * A `Connection` wraps a `ProtocolInterfaceNode` with a set of URI
- * filter patterns. Connections are bound into the rig's `routes`
- * config (`receive`, `read`, `observe`) — each route gets its own
- * ordered list of connections.
+ * A `Connection` pairs a `ProtocolInterfaceNode` with the question
+ * "does this URI route here?" That question is answered by an
+ * `Acceptance` (see `./acceptance.ts`) — pattern lists are the common
+ * case, but any predicate works.
  *
- * The same connection value can be referenced from multiple routes
- * (when one client serves writes, reads, and observes with the same
- * filter); a different filter for a different op means a separate
+ * Connections are bound into the rig's `routes` config (`receive`,
+ * `read`, `observe`) — each route gets its own ordered list. The same
+ * connection value can be referenced from multiple routes (when one
+ * client serves writes, reads, and observes with the same filter); a
+ * different filter for a different op means a separate
  * `connection(...)` call.
  *
- * Pattern syntax (same as observe):
- * - `:param` matches a single segment
- * - `*` matches one or more remaining segments
- * - Literal segments must match exactly
+ * For ergonomics, `connection(client, patternList)` keeps working —
+ * the string array is shorthand for `patterns(...patternList)`. Pass
+ * an explicit `Acceptance` (`prefix("…")`, `schemas("…")`, a custom
+ * predicate) when you need anything beyond the pattern grammar.
  *
- * @example A single client serving all three ops
+ * @example A single client serving all three ops (pattern shorthand)
  * ```ts
  * import { connection, Rig } from "@bandeira-tech/b3nd-sdk";
  *
@@ -32,25 +34,17 @@
  * });
  * ```
  *
- * @example Asymmetric topology — write-mirror, read-cache, narrow observe
+ * @example Explicit Acceptance — schema-driven routing
  * ```ts
- * const primary = connection(httpClient,  ["mutable://*", "hash://*"], { id: "primary" });
- * const mirror  = connection(pgClient,    ["mutable://*", "hash://*"], { id: "mirror"  });
- * const cache   = connection(redisClient, ["mutable://accounts/*"],     { id: "cache"   });
- * const obsNarrow = connection(httpClient, ["mutable://*"],             { id: "primary-obs" });
+ * import { connection, schemas } from "@bandeira-tech/b3nd-sdk";
  *
- * const rig = new Rig({
- *   routes: {
- *     receive: [primary, mirror], // broadcast both
- *     read:    [cache, primary],  // try cache first, then primary
- *     observe: [obsNarrow],       // narrow namespace, primary only
- *   },
- * });
+ * const notify = connection(webhookClient, schemas("notify"));
  * ```
  */
 
 import type { ProtocolInterfaceNode } from "../types/types.ts";
-import { matchPattern } from "./reactions.ts";
+import type { Acceptance } from "./acceptance.ts";
+import { patterns as patternsAcceptance } from "./acceptance.ts";
 
 // ── Types ──
 
@@ -65,8 +59,8 @@ export interface ConnectionOptions {
   id?: string;
 }
 
-/** A connection: a client wrapped with a URI pattern list. */
-export interface Connection {
+/** A connection: a client paired with an Acceptance and a stable id. */
+export interface Connection extends Acceptance {
   /** Stable identifier (provided or auto-generated). */
   readonly id: string;
 
@@ -74,31 +68,16 @@ export interface Connection {
   readonly client: ProtocolInterfaceNode;
 
   /**
-   * The raw patterns — serializable for wire protocols.
-   * Send this to a remote node so it knows what to push.
+   * Back-compat accessor — exposes the underlying pattern list when
+   * the connection was built from one. Returns `undefined` for
+   * connections built from an arbitrary `Acceptance` whose
+   * `describe()` is not a `string[]`.
+   *
+   * @deprecated Prefer `accepts()` for routing decisions and
+   * `describe()` for wire publication. This slot is kept for
+   * compatibility with existing consumers that read patterns directly.
    */
-  readonly patterns: readonly string[];
-
-  /** Check if this connection's pattern list accepts a URI. */
-  accepts(uri: string): boolean;
-}
-
-// ── Internals ──
-
-/** Pre-compiled pattern: pre-split segments for fast matching. */
-interface CompiledPattern {
-  segments: string[];
-}
-
-function compilePatterns(patterns: string[]): CompiledPattern[] {
-  return patterns.map((p) => ({ segments: p.split("/") }));
-}
-
-function matchesAny(compiled: CompiledPattern[], uri: string): boolean {
-  for (const { segments } of compiled) {
-    if (matchPattern(segments, uri) !== null) return true;
-  }
-  return false;
+  readonly patterns?: readonly string[];
 }
 
 // ── connection ──
@@ -107,32 +86,44 @@ function matchesAny(compiled: CompiledPattern[], uri: string): boolean {
 let _autoIdCounter = 0;
 
 /**
- * Wrap a client with a URI pattern list to create a connection.
+ * Wrap a client with an `Acceptance` (or a pattern shorthand) to
+ * create a connection.
  *
- * The connection is the gateway control — the rig uses it for
- * routing within the route arrays it appears in, and the patterns
- * can be published over the wire for remote filtering.
+ * The connection is the gateway control — the rig uses it for routing
+ * within the route arrays it appears in, and `acceptance.describe()`
+ * can be published over the wire for remote filtering when it
+ * produces a recognized descriptor (canonically: `string[]`).
  *
  * Local enforcement is always applied. Remote enforcement is
- * best-effort: the remote node may or may not honor the patterns,
- * but the local rig always filters based on them.
+ * best-effort: the remote node may or may not honor the descriptor.
  */
 export function connection(
   client: ProtocolInterfaceNode,
-  patterns: string[],
+  acceptance: Acceptance | string[],
   options?: ConnectionOptions,
 ): Connection {
-  const compiled = compilePatterns(patterns);
-  const frozenPatterns = Object.freeze([...patterns]) as readonly string[];
+  const a: Acceptance = Array.isArray(acceptance)
+    ? patternsAcceptance(...acceptance)
+    : acceptance;
+
   const id = options?.id ?? `conn-${_autoIdCounter++}`;
+
+  // Surface the pattern list for back-compat readers when the
+  // descriptor is a plain string[].
+  const described = a.describe?.();
+  const patternList = isStringArray(described)
+    ? Object.freeze([...described]) as readonly string[]
+    : undefined;
 
   return {
     id,
     client,
-    patterns: frozenPatterns,
-
-    accepts(uri: string): boolean {
-      return matchesAny(compiled, uri);
-    },
+    patterns: patternList,
+    accepts: (uri: string) => a.accepts(uri),
+    describe: a.describe?.bind(a),
   };
+}
+
+function isStringArray(v: unknown): v is readonly string[] {
+  return Array.isArray(v) && v.every((x) => typeof x === "string");
 }
