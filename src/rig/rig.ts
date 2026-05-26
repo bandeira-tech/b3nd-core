@@ -39,7 +39,7 @@ import { OperationHandleImpl } from "./operation-handle.ts";
  *
  * @example Unsigned operations
  * ```typescript
- * const local = connection(client, ["*"]);
+ * const local = connection(client, ["**"]);
  * const rig = new Rig({
  *   routes: { receive: [local], read: [local], observe: [local] },
  * });
@@ -58,7 +58,7 @@ import { OperationHandleImpl } from "./operation-handle.ts";
  *
  * @example With programs, hooks, events, and reactions
  * ```typescript
- * const local = connection(client, ["*"]);
+ * const local = connection(client, ["**"]);
  * const rig = new Rig({
  *   routes: { receive: [local], read: [local], observe: [local] },
  *   programs,
@@ -71,7 +71,8 @@ import { OperationHandleImpl } from "./operation-handle.ts";
  *     "send:success": [audit],
  *   },
  *   reactions: {
- *     "mutable://app/users/:id": async (out, _read, { id }) => {
+ *     "mutable://app/users/*": async (out, _read) => {
+ *       const id = out[0].split("/").pop();
  *       return [[`notify://email/${id}`, { kind: "user-updated" }]];
  *     },
  *   },
@@ -610,9 +611,9 @@ export class Rig {
     if (matches.length === 0) return;
 
     const collected: Output[] = [];
-    for (const { handler, params, pattern } of matches) {
+    for (const { handler, pattern } of matches) {
       try {
-        const emitted = await handler(emission, readFn, params);
+        const emitted = await handler(emission, readFn);
         collected.push(...emitted);
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
@@ -732,7 +733,7 @@ export class Rig {
    * @example
    * ```typescript
    * const abort = new AbortController();
-   * for await (const uris of rig.observe(["mutable://data/market/*"], abort.signal)) {
+   * for await (const uris of rig.observe(["mutable://data/market/**"], abort.signal)) {
    *   for (const uri of uris) console.log(uri);
    * }
    * ```
@@ -832,8 +833,9 @@ export class Rig {
    * @example
    * ```typescript
    * const unsub = rig.reaction(
-   *   "mutable://app/users/:id",
-   *   async (out, _read, { id }) => {
+   *   "mutable://app/users/*",
+   *   async (out, _read) => {
+   *     const id = out[0].split("/").pop();
    *     return [[`notify://email/${id}`, { kind: "user-updated" }]];
    *   },
    * );

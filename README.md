@@ -32,8 +32,8 @@ const client = new FunctionalClient({
 
 const rig = new Rig({
   routes: {
-    receive: [connection(client, ["*"])],
-    read: [connection(client, ["*"])],
+    receive: [connection(client, ["**"])],
+    read: [connection(client, ["**"])],
   },
 });
 
@@ -74,7 +74,7 @@ current state.
 
 ```typescript
 const ac = new AbortController();
-for await (const uris of pin.observe(["mutable://app/*"], ac.signal)) {
+for await (const uris of pin.observe(["mutable://app/**"], ac.signal)) {
   const outputs = await pin.read(uris);
   for (const [uri, payload] of outputs) console.log(uri, payload);
 }
@@ -94,12 +94,25 @@ Connections bind clients to locator patterns. The rig routes per operation:
 ```typescript
 const rig = new Rig({
   routes: {
-    receive: [connection(primaryClient, ["mutable://*", "hash://*"])],
-    read: [connection(primaryClient, ["mutable://*", "hash://*"])],
-    observe: [connection(primaryClient, ["mutable://*", "hash://*"])],
+    receive: [connection(primaryClient, ["mutable://**", "hash://**"])],
+    read: [connection(primaryClient, ["mutable://**", "hash://**"])],
+    observe: [connection(primaryClient, ["mutable://**", "hash://**"])],
   },
 });
 ```
+
+#### Pattern syntax
+
+One grammar across `connection`, `observe`, and `reactions`:
+
+- **literal** segments must match exactly,
+- `*` matches **exactly one non-empty segment** (no `/`),
+- `**` matches **zero or more remaining segments** (only as the last segment).
+
+If a reaction needs a segment value, extract it from the URI — patterns
+are bool-only, no captures. Patterns compile once: pure literals to `===`,
+`**`-prefix patterns to `String.startsWith`, anything with `*` to a
+cached `RegExp`. `:param` segments are rejected at compile time.
 
 ### Programs and Handlers
 
@@ -151,7 +164,7 @@ const rig = new Rig({
     "*:error": [(e) => alertOps(e)],
   },
   reactions: {
-    "mutable://app/users/:id": async (output) => {/* triggered on write */},
+    "mutable://app/users/*": async (output) => {/* triggered on write */},
   },
 });
 ```

@@ -128,7 +128,7 @@ match locally if you need that routing.
 ```ts
 const ac = new AbortController();
 for await (
-  const uris of pin.observe(["instagram://posts/p123/likes/*"], ac.signal)
+  const uris of pin.observe(["instagram://posts/p123/likes/**"], ac.signal)
 ) {
   // The likes prefix changed; recompute the count.
   const [c] = await pin.read(["instagram://posts/p123/likes/?fn=count"]);

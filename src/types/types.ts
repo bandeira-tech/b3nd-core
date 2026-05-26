@@ -227,7 +227,7 @@ export interface ProtocolInterfaceNode {
    * @example
    * ```ts
    * const abort = new AbortController();
-   * for await (const uris of client.observe(["mutable://market/*"], abort.signal)) {
+   * for await (const uris of client.observe(["mutable://market/**"], abort.signal)) {
    *   const outputs = await client.read(uris);
    *   for (const [uri, payload] of outputs) console.log(uri, payload);
    * }

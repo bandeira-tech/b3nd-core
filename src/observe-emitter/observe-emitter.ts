@@ -12,12 +12,15 @@
  * locally, which is cheap and keeps the stream minimal.
  *
  * `observe(locators, signal)` accepts locators as opaque strings and
- * matches them as segment-globs against emitted uris. The framework
- * imposes no grammar — locators are split on `/` and fed straight to
- * `matchPattern`. Any normalization (e.g. stripping request-time
- * directives before matching) is the executing client's responsibility.
+ * matches them as segment-globs against emitted uris. The shared glob
+ * grammar (`*` for one segment, `**` for the rest) applies. Any
+ * normalization (e.g. stripping request-time directives before matching)
+ * is the executing client's responsibility.
  */
-import { matchPattern } from "../match-pattern/match-pattern.ts";
+import {
+  compilePattern,
+  type Matcher,
+} from "../match-pattern/match-pattern.ts";
 
 export type ObserveListener = (
   uri: string,
@@ -75,13 +78,13 @@ export class ObserveEmitter {
     urls: string[],
     signal: AbortSignal,
   ): AsyncIterable<readonly string[]> {
-    const patterns = urls.map((u) => u.split("/"));
+    const matchers: Matcher[] = urls.map(compilePattern);
     const queue: (readonly string[])[] = [];
     let wake: (() => void) | null = null;
 
     const listener: ObserveListener = (uri, _data) => {
-      for (const segs of patterns) {
-        if (matchPattern(segs, uri) !== null) {
+      for (let i = 0; i < matchers.length; i++) {
+        if (matchers[i](uri)) {
           queue.push([uri]);
           const w = wake;
           if (w) {

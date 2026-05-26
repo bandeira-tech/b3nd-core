@@ -91,8 +91,11 @@ export {
 export type { EventHandler, RigEvent, RigEventName } from "./src/rig/events.ts";
 export { RigEventEmitter } from "./src/rig/events.ts";
 
-export type { ReactionHandler } from "./src/rig/reactions.ts";
-export { matchPattern, ReactionRegistry } from "./src/rig/reactions.ts";
+export type { Reaction, ReactionHandler } from "./src/rig/reactions.ts";
+export { ReactionRegistry } from "./src/rig/reactions.ts";
+
+export { compilePattern, matches } from "./src/match-pattern/match-pattern.ts";
+export type { Matcher } from "./src/match-pattern/match-pattern.ts";
 
 export { connection } from "./src/rig/connection.ts";
 export type { Connection, ConnectionOptions } from "./src/rig/connection.ts";

@@ -59,5 +59,5 @@ export type { EventHandler, RigEvent, RigEventName } from "./events.ts";
 export { RigEventEmitter } from "./events.ts";
 
 // ── Reactions ──
-export type { ReactionHandler } from "./reactions.ts";
-export { matchPattern, ReactionRegistry } from "./reactions.ts";
+export type { Reaction, ReactionHandler } from "./reactions.ts";
+export { ReactionRegistry } from "./reactions.ts";
