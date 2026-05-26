@@ -29,7 +29,7 @@ function memClient() {
 // ── Awaitable behavior ────────────────────────────────────────────────
 
 Deno.test("OperationHandle - await resolves to ReceiveResult[]", async () => {
-  const _route19 = connection(memClient(), ["*"]);
+  const _route19 = connection(memClient(), ["**"]);
   const rig = new Rig({
     routes: {
       receive: [_route19],
@@ -44,7 +44,7 @@ Deno.test("OperationHandle - await resolves to ReceiveResult[]", async () => {
 });
 
 Deno.test("OperationHandle - rig.send returns OperationHandle", async () => {
-  const _route20 = connection(memClient(), ["*"]);
+  const _route20 = connection(memClient(), ["**"]);
   const rig = new Rig({
     routes: {
       receive: [_route20],
@@ -63,7 +63,7 @@ Deno.test("OperationHandle - rig.send returns OperationHandle", async () => {
 // ── Per-stage events ──────────────────────────────────────────────────
 
 Deno.test("OperationHandle - fires process:done per input tuple", async () => {
-  const _route21 = connection(memClient(), ["*"]);
+  const _route21 = connection(memClient(), ["**"]);
   const rig = new Rig({
     routes: {
       receive: [_route21],
@@ -86,7 +86,7 @@ Deno.test("OperationHandle - fires process:done per input tuple", async () => {
 });
 
 Deno.test("OperationHandle - fires handle:emit with handler emissions", async () => {
-  const _route22 = connection(memClient(), ["*"]);
+  const _route22 = connection(memClient(), ["**"]);
   const rig = new Rig({
     routes: {
       receive: [_route22],
@@ -110,11 +110,11 @@ Deno.test("OperationHandle - fires handle:emit with handler emissions", async ()
 
 Deno.test("OperationHandle - fires route:success per (emission, connection)", async () => {
   const primary = memClient();
-  const primaryReceive = connection(primary, ["mutable://*"], {
+  const primaryReceive = connection(primary, ["mutable://**"], {
     id: "primary",
   });
-  const primaryRead = connection(primary, ["*"], { id: "primary" });
-  const mirror = connection(memClient(), ["mutable://*"], { id: "mirror" });
+  const primaryRead = connection(primary, ["**"], { id: "primary" });
+  const mirror = connection(memClient(), ["mutable://**"], { id: "mirror" });
   const rig = new Rig({
     routes: {
       receive: [primaryReceive, mirror],
@@ -138,7 +138,7 @@ Deno.test("OperationHandle - fires route:error when a connection rejects", async
   const failing = new FunctionalClient({
     receive: () => Promise.resolve([{ accepted: false, error: "disk full" }]),
   });
-  const _route23 = connection(failing, ["mutable://*"], { id: "broken" });
+  const _route23 = connection(failing, ["mutable://**"], { id: "broken" });
   const rig = new Rig({
     routes: {
       receive: [_route23],
@@ -163,7 +163,7 @@ Deno.test("OperationHandle - fires route:error when a connection rejects", async
 // ── settled event + .settled Promise ──────────────────────────────────
 
 Deno.test("OperationHandle - .settled resolves after all routes settle", async () => {
-  const _route24 = connection(memClient(), ["*"], {
+  const _route24 = connection(memClient(), ["**"], {
     id: "memory",
   });
   const rig = new Rig({
@@ -179,7 +179,7 @@ Deno.test("OperationHandle - .settled resolves after all routes settle", async (
 });
 
 Deno.test("OperationHandle - .settled fires settled event with results", async () => {
-  const _route25 = connection(memClient(), ["*"], {
+  const _route25 = connection(memClient(), ["**"], {
     id: "memory",
   });
   const rig = new Rig({
@@ -206,7 +206,7 @@ Deno.test(
   async () => {
     const reject: Program = () =>
       Promise.resolve({ code: "reject", error: "no" });
-    const _route26 = connection(memClient(), ["*"]);
+    const _route26 = connection(memClient(), ["**"]);
     const rig = new Rig({
       routes: {
         receive: [_route26],
@@ -230,7 +230,7 @@ Deno.test(
 // ── Helpers ───────────────────────────────────────────────────────────
 
 Deno.test("rig.receiveOrThrow - returns results on accept", async () => {
-  const _route27 = connection(memClient(), ["*"]);
+  const _route27 = connection(memClient(), ["**"]);
   const rig = new Rig({
     routes: {
       receive: [_route27],
@@ -246,7 +246,7 @@ Deno.test("rig.receiveOrThrow - returns results on accept", async () => {
 Deno.test("rig.receiveOrThrow - throws on pipeline rejection", async () => {
   const reject: Program = () =>
     Promise.resolve({ code: "reject", error: "nope" });
-  const _route28 = connection(memClient(), ["*"]);
+  const _route28 = connection(memClient(), ["**"]);
   const rig = new Rig({
     routes: {
       receive: [_route28],
@@ -264,7 +264,7 @@ Deno.test("rig.receiveOrThrow - throws on pipeline rejection", async () => {
 Deno.test("rig.sendOrThrow - throws on pipeline rejection", async () => {
   const reject: Program = () =>
     Promise.resolve({ code: "reject", error: "nope-send" });
-  const _route29 = connection(memClient(), ["*"]);
+  const _route29 = connection(memClient(), ["**"]);
   const rig = new Rig({
     routes: {
       receive: [_route29],
@@ -282,7 +282,7 @@ Deno.test("rig.sendOrThrow - throws on pipeline rejection", async () => {
 // ── Scope: events fire only for this operation ────────────────────────
 
 Deno.test("OperationHandle - events scoped to this operation only", async () => {
-  const _route30 = connection(memClient(), ["*"]);
+  const _route30 = connection(memClient(), ["**"]);
   const rig = new Rig({
     routes: {
       receive: [_route30],
@@ -308,13 +308,13 @@ Deno.test("OperationHandle - events scoped to this operation only", async () => 
 // ── Connection IDs ────────────────────────────────────────────────────
 
 Deno.test("connection - uses provided id", () => {
-  const c = connection(memClient(), ["*"], { id: "named" });
+  const c = connection(memClient(), ["**"], { id: "named" });
   assertEquals(c.id, "named");
 });
 
 Deno.test("connection - auto-generates id when omitted", () => {
-  const a = connection(memClient(), ["*"]);
-  const b = connection(memClient(), ["*"]);
+  const a = connection(memClient(), ["**"]);
+  const b = connection(memClient(), ["**"]);
   // IDs are stable strings — different connections get different IDs.
   assertNotEquals(a.id, b.id);
   assertEquals(a.id.startsWith("conn-"), true);
@@ -327,7 +327,7 @@ Deno.test("OperationHandle - fires process:error when program throws", async () 
   const throwingProgram: Program = () => {
     throw new Error("program crashed");
   };
-  const c = connection(memClient(), ["*"]);
+  const c = connection(memClient(), ["**"]);
   const rig = new Rig({
     routes: { receive: [c], read: [c] },
     programs: { "mutable://open": throwingProgram },
@@ -347,7 +347,7 @@ Deno.test("OperationHandle - fires process:error when program throws", async () 
 Deno.test("OperationHandle - fires process:error when program returns error code", async () => {
   const reject: Program = () =>
     Promise.resolve({ code: "rejected", error: "policy denied" });
-  const c = connection(memClient(), ["*"]);
+  const c = connection(memClient(), ["**"]);
   const rig = new Rig({
     routes: { receive: [c], read: [c] },
     programs: { "mutable://open": reject },
@@ -360,7 +360,7 @@ Deno.test("OperationHandle - fires process:error when program returns error code
 });
 
 Deno.test("OperationHandle - fires process:error when no connection accepts", async () => {
-  const c = connection(memClient(), ["local://*"]);
+  const c = connection(memClient(), ["local://**"]);
   const rig = new Rig({ routes: { receive: [c] } });
   const errors: string[] = [];
   const op = rig.receive([["mutable://open/x", { v: 1 }]]);
@@ -375,7 +375,7 @@ Deno.test("OperationHandle - fires process:error when no connection accepts", as
 
 Deno.test("OperationHandle - fires handle:error when handler throws", async () => {
   const okProgram: Program = () => Promise.resolve({ code: "boom" });
-  const c = connection(memClient(), ["*"]);
+  const c = connection(memClient(), ["**"]);
   const rig = new Rig({
     routes: { receive: [c], read: [c] },
     programs: { "mutable://open": okProgram },
@@ -405,11 +405,11 @@ Deno.test("OperationHandle - fires handle:error when handler throws", async () =
 // ── reaction:error event ──────────────────────────────────────────────
 
 Deno.test("OperationHandle - fires reaction:error when reaction throws", async () => {
-  const c = connection(memClient(), ["*"]);
+  const c = connection(memClient(), ["**"]);
   const rig = new Rig({
     routes: { receive: [c], read: [c] },
     reactions: {
-      "mutable://open/:id": () => {
+      "mutable://open/*": () => {
         throw new Error("reaction crashed");
       },
     },
@@ -427,7 +427,7 @@ Deno.test("OperationHandle - fires reaction:error when reaction throws", async (
   await op.settled;
   assertEquals(errors.length, 1);
   assertEquals(errors[0].uri, "mutable://open/x");
-  assertEquals(errors[0].pattern, "mutable://open/:id");
+  assertEquals(errors[0].pattern, "mutable://open/*");
   assertEquals(errors[0].error, "reaction crashed");
 });
 
@@ -435,7 +435,7 @@ Deno.test("OperationHandle - fires reaction:error when reaction throws", async (
 
 Deno.test("onError hook - fires for process error (program throw)", async () => {
   const seen: { phase: string; error: string }[] = [];
-  const c = connection(memClient(), ["*"]);
+  const c = connection(memClient(), ["**"]);
   const rig = new Rig({
     routes: { receive: [c], read: [c] },
     programs: {
@@ -458,7 +458,7 @@ Deno.test("onError hook - fires for process error (program throw)", async () => 
 
 Deno.test("onError hook - fires for handle error (handler throw)", async () => {
   const seen: string[] = [];
-  const c = connection(memClient(), ["*"]);
+  const c = connection(memClient(), ["**"]);
   const rig = new Rig({
     routes: { receive: [c], read: [c] },
     programs: { "mutable://open": () => Promise.resolve({ code: "go" }) },
@@ -482,7 +482,7 @@ Deno.test("onError hook - fires for route error (connection rejects)", async () 
   const failing = new FunctionalClient({
     receive: () => Promise.resolve([{ accepted: false, error: "disk full" }]),
   });
-  const c = connection(failing, ["*"], { id: "broken" });
+  const c = connection(failing, ["**"], { id: "broken" });
   const seen: { phase: string; connectionId?: string; error: string }[] = [];
   const rig = new Rig({
     routes: { receive: [c] },
@@ -507,11 +507,11 @@ Deno.test("onError hook - fires for route error (connection rejects)", async () 
 
 Deno.test("onError hook - fires for reaction error", async () => {
   const seen: { phase: string; pattern?: string; error: string }[] = [];
-  const c = connection(memClient(), ["*"]);
+  const c = connection(memClient(), ["**"]);
   const rig = new Rig({
     routes: { receive: [c], read: [c] },
     reactions: {
-      "mutable://open/:id": () => {
+      "mutable://open/*": () => {
         throw new Error("react crashed");
       },
     },
@@ -530,14 +530,14 @@ Deno.test("onError hook - fires for reaction error", async () => {
   await op.settled;
   assertEquals(seen.length, 1);
   assertEquals(seen[0].phase, "reaction");
-  assertEquals(seen[0].pattern, "mutable://open/:id");
+  assertEquals(seen[0].pattern, "mutable://open/*");
   assertEquals(seen[0].error, "react crashed");
 });
 
 // ── onError hook — abort by throwing ─────────────────────────────────
 
 Deno.test("onError hook - throw aborts the operation (process phase)", async () => {
-  const c = connection(memClient(), ["*"]);
+  const c = connection(memClient(), ["**"]);
   const rig = new Rig({
     routes: { receive: [c], read: [c] },
     programs: {
@@ -561,7 +561,7 @@ Deno.test("onError hook - throw aborts the operation (process phase)", async () 
 Deno.test("onError hook - throw on first tuple stops batch processing", async () => {
   // Two tuples, the first triggers a program error. The hook throws,
   // so the second should never be processed.
-  const c = connection(memClient(), ["*"]);
+  const c = connection(memClient(), ["**"]);
   const rig = new Rig({
     routes: { receive: [c], read: [c] },
     programs: {
@@ -592,7 +592,7 @@ Deno.test("onError hook - return (no throw) lets pipeline keep going", async () 
   // Two tuples, the first triggers a program error. The hook records
   // it but doesn't throw — the second tuple should still be processed.
   const seen: string[] = [];
-  const c = connection(memClient(), ["*"]);
+  const c = connection(memClient(), ["**"]);
   const rig = new Rig({
     routes: { receive: [c], read: [c] },
     programs: {

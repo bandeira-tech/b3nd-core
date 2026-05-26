@@ -1,91 +1,36 @@
 import { assertEquals } from "@std/assert";
-import { matchPattern, ReactionRegistry } from "./reactions.ts";
+import { ReactionRegistry } from "./reactions.ts";
 import type { Output, ReadFn } from "../types/types.ts";
 
 // deno-lint-ignore no-explicit-any
 const stubRead: ReadFn = (url) => Promise.resolve([url, undefined as any]);
-
-// ── matchPattern ──
-
-Deno.test("matchPattern - exact match", () => {
-  const segments = "mutable://app/config".split("/");
-  assertEquals(matchPattern(segments, "mutable://app/config"), {});
-  assertEquals(matchPattern(segments, "mutable://app/other"), null);
-});
-
-Deno.test("matchPattern - :param captures segment", () => {
-  const segments = "mutable://app/users/:id".split("/");
-  assertEquals(
-    matchPattern(segments, "mutable://app/users/alice"),
-    { id: "alice" },
-  );
-  assertEquals(
-    matchPattern(segments, "mutable://app/users/bob"),
-    { id: "bob" },
-  );
-  assertEquals(matchPattern(segments, "mutable://app/users"), null);
-  assertEquals(
-    matchPattern(segments, "mutable://app/users/alice/extra"),
-    null,
-  );
-});
-
-Deno.test("matchPattern - multiple :params", () => {
-  const segments = "mutable://app/:org/users/:id".split("/");
-  assertEquals(
-    matchPattern(segments, "mutable://app/acme/users/alice"),
-    { org: "acme", id: "alice" },
-  );
-});
-
-Deno.test("matchPattern - * wildcard matches rest", () => {
-  const segments = "hash://sha256/*".split("/");
-  assertEquals(
-    matchPattern(segments, "hash://sha256/abc123"),
-    { "*": "abc123" },
-  );
-  assertEquals(
-    matchPattern(segments, "hash://sha256/abc/def"),
-    { "*": "abc/def" },
-  );
-});
-
-Deno.test("matchPattern - protocol mismatch", () => {
-  const segments = "mutable://app/key".split("/");
-  assertEquals(matchPattern(segments, "immutable://app/key"), null);
-});
-
-Deno.test("matchPattern - empty segments", () => {
-  const segments = "mutable:".split("/");
-  assertEquals(matchPattern(segments, "mutable:"), {});
-});
 
 // ── ReactionRegistry ──
 
 Deno.test("ReactionRegistry - matches() returns reactions for matching URI", async () => {
   const registry = new ReactionRegistry();
 
-  registry.add("mutable://app/users/:id", (_out, _read, params) => {
+  registry.add("mutable://app/users/*", (out) => {
+    const id = out[0].split("/").pop()!;
     return Promise.resolve([
-      [`audit://users/${params.id}`, { observed: true }] as Output,
+      [`audit://users/${id}`, { observed: true }] as Output,
     ]);
   });
 
   const matches = registry.matches("mutable://app/users/alice");
   assertEquals(matches.length, 1);
-  assertEquals(matches[0].params, { id: "alice" });
+  assertEquals(matches[0].pattern, "mutable://app/users/*");
 
   const result = await matches[0].handler(
     ["mutable://app/users/alice", { name: "Alice" }],
     stubRead,
-    matches[0].params,
   );
   assertEquals(result, [["audit://users/alice", { observed: true }]]);
 });
 
 Deno.test("ReactionRegistry - no match returns empty array", () => {
   const registry = new ReactionRegistry();
-  registry.add("mutable://app/users/:id", () => Promise.resolve([]));
+  registry.add("mutable://app/users/*", () => Promise.resolve([]));
 
   const matches = registry.matches("mutable://app/posts/123");
   assertEquals(matches.length, 0);
@@ -106,8 +51,8 @@ Deno.test("ReactionRegistry - unsubscribe removes handler", () => {
 
 Deno.test("ReactionRegistry - multiple patterns match same URI", () => {
   const registry = new ReactionRegistry();
-  registry.add("mutable://app/users/:id", () => Promise.resolve([]));
-  registry.add("mutable://app/*", () => Promise.resolve([]));
+  registry.add("mutable://app/users/*", () => Promise.resolve([]));
+  registry.add("mutable://app/**", () => Promise.resolve([]));
 
   const matches = registry.matches("mutable://app/users/alice");
   assertEquals(matches.length, 2);
@@ -128,4 +73,15 @@ Deno.test("ReactionRegistry - size tracks entries", () => {
 
   unsub();
   assertEquals(registry.size, 1);
+});
+
+Deno.test("ReactionRegistry - rejects :param patterns at registration", () => {
+  const registry = new ReactionRegistry();
+  let threw = false;
+  try {
+    registry.add(":id", () => Promise.resolve([]));
+  } catch (e) {
+    threw = e instanceof TypeError;
+  }
+  assertEquals(threw, true);
 });

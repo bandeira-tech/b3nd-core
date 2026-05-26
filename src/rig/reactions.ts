@@ -3,42 +3,41 @@
  * Reaction registry for the Rig.
  *
  * Reactions fire on successfully dispatched outputs (via send/receive)
- * whose URI matches a registered pattern. Patterns use Express-style
- * matching (see `matchPattern` in b3nd-core).
+ * whose URI matches a registered pattern. Patterns use the shared glob
+ * grammar (`*` for one segment, `**` for the rest).
  *
  * Reactions are pure: they take the dispatched output and a `read`
  * function and return `Output[]`. The Rig feeds those returned tuples
  * back through `rig.send` (full pipeline — programs run, handlers run,
  * more reactions can fire).
  *
- * Pattern parameters captured from the URI (e.g., `:id`) are passed as
- * a third argument so reactions don't have to re-parse the URI.
+ * Reactions receive only the dispatched output; if a handler needs a
+ * segment value, it extracts it from the URI directly.
  *
  * Pure module — no Rig dependency, testable in isolation.
  */
 
-import { matchPattern } from "../match-pattern/match-pattern.ts";
+import {
+  compilePattern,
+  type Matcher,
+} from "../match-pattern/match-pattern.ts";
 import type { Output, ReadFn } from "../types/types.ts";
-
-// Re-export matchPattern from core — used by connections, clients, and the rig
-export { matchPattern };
 
 // ── Types ──
 
 /**
  * Reaction handler — called when a dispatched URI matches the pattern.
  *
- * Receives the dispatched output, a read function, and the captured
- * pattern parameters. Returns the tuples the Rig should put on the
- * wire as a consequence of what the reaction observed; those flow
- * through full `rig.send` (programs + handlers + more reactions).
+ * Receives the dispatched output and a read function. Returns the tuples
+ * the Rig should put on the wire as a consequence of what the reaction
+ * observed; those flow through full `rig.send` (programs + handlers +
+ * more reactions).
  *
  * Returning `[]` means "I observed it but emit nothing further."
  */
 export type Reaction = (
   out: Output,
   read: ReadFn,
-  params: Record<string, string>,
 ) => Promise<Output[]>;
 
 /** @deprecated alias kept for migration; prefer `Reaction`. */
@@ -47,8 +46,8 @@ export type ReactionHandler = Reaction;
 interface ReactionEntry {
   /** The original pattern string. */
   pattern: string;
-  /** Pre-split pattern segments for matching. */
-  segments: string[];
+  /** Compiled matcher for this pattern. */
+  matcher: Matcher;
   /** The handler to call on match. */
   handler: Reaction;
 }
@@ -72,7 +71,7 @@ export class ReactionRegistry {
   add(pattern: string, handler: Reaction): () => void {
     const entry: ReactionEntry = {
       pattern,
-      segments: pattern.split("/"),
+      matcher: compilePattern(pattern),
       handler,
     };
     this.entries.push(entry);
@@ -84,31 +83,21 @@ export class ReactionRegistry {
 
   /**
    * Find every reaction whose pattern matches `uri`. Returns the list
-   * of `(pattern, handler, params)` triples the caller can invoke.
+   * of `(pattern, handler)` pairs the caller can invoke.
    */
   matches(
     uri: string,
   ): {
     pattern: string;
     handler: Reaction;
-    params: Record<string, string>;
   }[] {
-    const matches: {
-      pattern: string;
-      handler: Reaction;
-      params: Record<string, string>;
-    }[] = [];
+    const out: { pattern: string; handler: Reaction }[] = [];
     for (const entry of this.entries) {
-      const params = matchPattern(entry.segments, uri);
-      if (params !== null) {
-        matches.push({
-          pattern: entry.pattern,
-          handler: entry.handler,
-          params,
-        });
+      if (entry.matcher(uri)) {
+        out.push({ pattern: entry.pattern, handler: entry.handler });
       }
     }
-    return matches;
+    return out;
   }
 
   /** Whether any patterns are registered. */

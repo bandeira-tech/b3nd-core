@@ -56,7 +56,7 @@ export interface RigConfig {
    *
    * @example
    * ```typescript
-   * const node = connection(httpClient, ["mutable://*", "hash://*"]);
+   * const node = connection(httpClient, ["mutable://**", "hash://**"]);
    *
    * const rig = new Rig({
    *   routes: {
@@ -146,15 +146,17 @@ export interface RigConfig {
   /**
    * URI-pattern reactions — fire on successful writes.
    *
-   * Patterns use Express-style matching: `:param` captures a segment,
-   * `*` matches the rest. Handlers are fire-and-forget.
+   * Patterns use the shared glob grammar: `*` matches one segment,
+   * `**` matches the rest. Handlers are fire-and-forget; if you need
+   * a segment value, extract it from `out[0]` inside the handler.
    *
    * @example
    * ```typescript
    * const rig = new Rig({
    *   routes: { ... },
    *   reactions: {
-   *     "mutable://app/users/:id": async (out, _read, { id }) => {
+   *     "mutable://app/users/*": async (out, _read) => {
+   *       const id = out[0].split("/").pop();
    *       return [[`notify://email/${id}`, { kind: "user-updated" }]];
    *     },
    *   },

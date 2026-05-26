@@ -98,7 +98,7 @@ there's no Policy argument at this layer. If you need a different strategy, use
 
 ```ts
 const rig = new Rig({
-  connections: [connection(flood(peers), { receive: ["*"], read: ["*"] })],
+  connections: [connection(flood(peers), { receive: ["**"], read: ["**"] })],
 });
 ```
 
@@ -123,8 +123,8 @@ server and are observed by other nodes in return.
 ```ts
 const rig = new Rig({
   connections: [
-    connection(localStore, { receive: ["*"], read: ["*"] }),
-    connection(pathVector(peers), { receive: ["mutable://*"] }),
+    connection(localStore, { receive: ["**"], read: ["**"] }),
+    connection(pathVector(peers), { receive: ["mutable://**"] }),
   ],
 });
 const unbind = network(rig, peers);
@@ -152,9 +152,9 @@ const peers = [
 ];
 
 const rig = new Rig({
-  connections: [connection(localClient, { receive: ["*"], read: ["*"] })],
+  connections: [connection(localClient, { receive: ["**"], read: ["**"] })],
   reactions: {
-    "mutable://chat/:id": (uri) => console.log("saw", uri),
+    "mutable://chat/*": (uri) => console.log("saw", uri),
   },
 });
 
@@ -178,7 +178,11 @@ const peers = [
 
 const rig = new Rig({
   connections: [
-    connection(flood(peers), { receive: ["*"], read: ["*"], observe: ["*"] }),
+    connection(flood(peers), {
+      receive: ["**"],
+      read: ["**"],
+      observe: ["**"],
+    }),
   ],
 });
 
@@ -217,9 +221,9 @@ const sync = tellAndRead({
 
 const rig = new Rig({
   connections: [
-    connection(localStore, { receive: ["*"], read: ["*"] }),
+    connection(localStore, { receive: ["**"], read: ["**"] }),
     // Outbound: announce hash:// content; everything else flows as-is.
-    connection(sync.outbound(peers), { receive: ["hash://*"] }),
+    connection(sync.outbound(peers), { receive: ["hash://**"] }),
   ],
 });
 
@@ -246,8 +250,8 @@ const peers = [
 
 const rig = new Rig({
   connections: [
-    connection(localStore, { receive: ["*"], read: ["*"] }),
-    connection(pathVector(peers), { receive: ["mutable://*"] }),
+    connection(localStore, { receive: ["**"], read: ["**"] }),
+    connection(pathVector(peers), { receive: ["mutable://**"] }),
   ],
 });
 const unbind = network(rig, peers);
@@ -277,5 +281,5 @@ side-channel API — everything is addressed content flowing through
 
 ## Tests
 
-Run with `deno test --allow-all src/network/`. No sanitizer overrides —
-Deno's op and resource sanitizers are active on every test.
+Run with `deno test --allow-all src/network/`. No sanitizer overrides — Deno's
+op and resource sanitizers are active on every test.

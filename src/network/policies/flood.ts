@@ -14,7 +14,7 @@
  * import { connection, Rig } from "@bandeira-tech/b3nd-core";
  * import { flood, peer } from "@bandeira-tech/b3nd-core/network";
  *
- * const peers = connection(flood([peer(remoteClient)]), ["*"]);
+ * const peers = connection(flood([peer(remoteClient)]), ["**"]);
  * const rig = new Rig({
  *   routes: { receive: [peers], read: [peers], observe: [peers] },
  * });

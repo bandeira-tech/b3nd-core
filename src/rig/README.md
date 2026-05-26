@@ -26,7 +26,7 @@ const localClient = new FunctionalClient({
     ),
 });
 
-const local = connection(localClient, ["*"]);
+const local = connection(localClient, ["**"]);
 const rig = new Rig({
   routes: {
     receive: [local],
@@ -73,9 +73,9 @@ const [profile] = await rig.read(["mutable://app/users/alice"]);
 profile?.[1]; // whatever the client returns for that locator
 ```
 
-Locators are opaque to the rig — it matches them against route patterns
-by segment-glob and hands them to the executing client unchanged. Each
-client defines its own locator grammar.
+Locators are opaque to the rig — it matches them against route patterns by
+segment-glob and hands them to the executing client unchanged. Each client
+defines its own locator grammar.
 
 ## Reactive
 
@@ -84,7 +84,7 @@ changed. Read the uri to learn its current state.
 
 ```typescript
 const abort = new AbortController();
-for await (const ev of rig.observe(["mutable://app/*"], abort.signal)) {
+for await (const ev of rig.observe(["mutable://app/**"], abort.signal)) {
   const [r] = await rig.read([ev.uri]);
   if (r.success) console.log(ev.uri, r.record?.data);
   else console.log(ev.uri, "deleted");
@@ -106,20 +106,20 @@ import { connection, Rig } from "@bandeira-tech/b3nd-core/rig";
 
 // Read-only cache (no receive binding)
 const cache = connection(redisClient, [
-  "mutable://accounts/:key/*",
-  "hash://sha256/*",
+  "mutable://accounts/*/**",
+  "hash://sha256/**",
 ]);
 
 // Primary storage (serves reads, writes, and observes)
 const primary = connection(postgresClient, [
-  "mutable://*",
-  "immutable://*",
-  "hash://*",
-  "link://*",
+  "mutable://**",
+  "immutable://**",
+  "hash://**",
+  "link://**",
 ]);
 
 // Local-only (never leaves the device)
-const local = connection(memoryClient, ["local://*", "rig://*"]);
+const local = connection(memoryClient, ["local://**", "rig://**"]);
 
 const rig = new Rig({
   routes: {
@@ -140,8 +140,10 @@ the streams.
 When a single client needs different patterns per op, make separate
 `connection(...)` calls — each binds one pattern list.
 
-Patterns use the same Express-style matching as observe: `:param` captures a
-segment, `*` matches the rest.
+Patterns use the same glob grammar as observe and reactions: `*` matches one
+non-empty segment, `**` matches the rest. Bool-only — no captures. Patterns
+compile once: literals to `===`, `**`-prefix patterns to `String.startsWith`,
+anything with `*` to a cached `RegExp`.
 
 ## Hooks
 
@@ -228,15 +230,16 @@ Event names: `send:success`, `send:error`, `receive:success`, `receive:error`,
 URI-pattern reactions that fire on successful writes (send or receive).
 
 ```typescript
-const local = connection(localClient, ["*"]);
+const local = connection(localClient, ["**"]);
 const rig = new Rig({
   routes: { receive: [local], read: [local], observe: [local] },
   reactions: {
-    "mutable://app/users/:id": async (out, _read, { id }) => {
+    "mutable://app/users/*": async (out, _read) => {
       // Reactions return Output[] — those tuples flow through rig.send.
+      const id = out[0].split("/").pop();
       return [[`notify://email/${id}`, { kind: "user-updated" }]];
     },
-    "hash://sha256/*": async (out) => {
+    "hash://sha256/**": async (out) => {
       console.log("new content stored at", out[0]);
       return [];
     },
@@ -245,8 +248,9 @@ const rig = new Rig({
 
 // Runtime registration
 const unsub = rig.reaction(
-  "mutable://app/posts/:slug",
-  async (out, _read, { slug }) => {
+  "mutable://app/posts/*",
+  async (out, _read) => {
+    const slug = out[0].split("/").pop();
     return [[`index://posts/${slug}/rebuild`, { ts: Date.now() }]];
   },
 );
@@ -294,14 +298,14 @@ await rig.status(); // StatusResult { status, schema }
 
 ```typescript
 // Minimal
-const local = connection(localClient, ["*"]);
+const local = connection(localClient, ["**"]);
 const rig = new Rig({
   routes: { receive: [local], read: [local], observe: [local] },
 });
 
 // Full config
-const pg     = connection(postgresClient, ["mutable://*"]);
-const memory = connection(memoryClient,   ["local://*"]);
+const pg     = connection(postgresClient, ["mutable://**"]);
+const memory = connection(memoryClient,   ["local://**"]);
 const rig = new Rig({
   routes: {
     receive: [pg, memory],
@@ -329,4 +333,3 @@ connect(rig, { prefix, processor });
 createHandler(rig, config);
 loadConfig(rig, operatorKey, nodeId);
 ```
-

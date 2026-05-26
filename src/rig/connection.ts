@@ -12,16 +12,16 @@
  * filter); a different filter for a different op means a separate
  * `connection(...)` call.
  *
- * Pattern syntax (same as observe):
- * - `:param` matches a single segment
- * - `*` matches one or more remaining segments
+ * Pattern syntax (same as observe and reactions):
+ * - `*` matches exactly one non-empty segment
+ * - `**` matches zero or more remaining segments (final segment only)
  * - Literal segments must match exactly
  *
  * @example A single client serving all three ops
  * ```ts
  * import { connection, Rig } from "@bandeira-tech/b3nd-core";
  *
- * const node = connection(httpClient, ["mutable://*", "hash://*"]);
+ * const node = connection(httpClient, ["mutable://**", "hash://**"]);
  *
  * const rig = new Rig({
  *   routes: {
@@ -34,10 +34,10 @@
  *
  * @example Asymmetric topology — write-mirror, read-cache, narrow observe
  * ```ts
- * const primary = connection(httpClient,  ["mutable://*", "hash://*"], { id: "primary" });
- * const mirror  = connection(pgClient,    ["mutable://*", "hash://*"], { id: "mirror"  });
- * const cache   = connection(redisClient, ["mutable://accounts/*"],     { id: "cache"   });
- * const obsNarrow = connection(httpClient, ["mutable://*"],             { id: "primary-obs" });
+ * const primary = connection(httpClient,  ["mutable://**", "hash://**"], { id: "primary" });
+ * const mirror  = connection(pgClient,    ["mutable://**", "hash://**"], { id: "mirror"  });
+ * const cache   = connection(redisClient, ["mutable://accounts/**"],   { id: "cache"   });
+ * const obsNarrow = connection(httpClient, ["mutable://**"],            { id: "primary-obs" });
  *
  * const rig = new Rig({
  *   routes: {
@@ -50,7 +50,10 @@
  */
 
 import type { ProtocolInterfaceNode } from "../types/types.ts";
-import { matchPattern } from "./reactions.ts";
+import {
+  compilePattern,
+  type Matcher,
+} from "../match-pattern/match-pattern.ts";
 
 // ── Types ──
 
@@ -85,18 +88,9 @@ export interface Connection {
 
 // ── Internals ──
 
-/** Pre-compiled pattern: pre-split segments for fast matching. */
-interface CompiledPattern {
-  segments: string[];
-}
-
-function compilePatterns(patterns: string[]): CompiledPattern[] {
-  return patterns.map((p) => ({ segments: p.split("/") }));
-}
-
-function matchesAny(compiled: CompiledPattern[], uri: string): boolean {
-  for (const { segments } of compiled) {
-    if (matchPattern(segments, uri) !== null) return true;
+function matchesAny(matchers: Matcher[], uri: string): boolean {
+  for (let i = 0; i < matchers.length; i++) {
+    if (matchers[i](uri)) return true;
   }
   return false;
 }
@@ -122,7 +116,7 @@ export function connection(
   patterns: string[],
   options?: ConnectionOptions,
 ): Connection {
-  const compiled = compilePatterns(patterns);
+  const matchers = patterns.map(compilePattern);
   const frozenPatterns = Object.freeze([...patterns]) as readonly string[];
   const id = options?.id ?? `conn-${_autoIdCounter++}`;
 
@@ -132,7 +126,7 @@ export function connection(
     patterns: frozenPatterns,
 
     accepts(uri: string): boolean {
-      return matchesAny(compiled, uri);
+      return matchesAny(matchers, uri);
     },
   };
 }

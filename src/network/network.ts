@@ -13,7 +13,7 @@
  * const unbind = network(rig, peers);                           // no policies
  * const unbind = network(rig, peers, [myPolicy]);               // one policy
  * const unbind = network(rig, peers, [filter, tellAndRead], {   // multiple, chained
- *   pattern: "mutable://chat/*",
+ *   pattern: "mutable://chat/**",
  * });
  *
  * await unbind();
@@ -41,7 +41,7 @@ export function network(
   opts: NetworkOptions = {},
 ): () => Promise<void> {
   const { originId, peers: frozenPeers } = validatePeers(peers);
-  const pattern = opts.pattern ?? "*";
+  const pattern = opts.pattern ?? "**";
   const onError = opts.onError ?? (() => {});
   const ac = new AbortController();
 

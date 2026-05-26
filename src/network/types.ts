@@ -95,7 +95,7 @@ export interface Policy {
  */
 export interface NetworkOptions {
   /**
-   * Observe pattern subscribed to on each peer. Defaults to `"*"` —
+   * Observe pattern subscribed to on each peer. Defaults to `"**"` —
    * every event is bridged. Narrow to reduce noise in busy networks.
    */
   pattern?: string;
@@ -117,7 +117,7 @@ export interface NetworkOptions {
  * connection list unchanged:
  *
  * ```ts
- * connection(flood(peers), ["*"])
+ * connection(flood(peers), ["**"])
  * ```
  */
 export type StrategyFactory = (peers: Peer[]) => ProtocolInterfaceNode;

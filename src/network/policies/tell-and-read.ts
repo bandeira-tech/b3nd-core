@@ -51,8 +51,8 @@
  *   },
  * });
  *
- * const local = connection(localStore, ["*"]);
- * const outbound = connection(sync.outbound(peers), ["hash://*"]);
+ * const local = connection(localStore, ["**"]);
+ * const outbound = connection(sync.outbound(peers), ["hash://**"]);
  * const rig = new Rig({
  *   routes: {
  *     receive: [local, outbound],
@@ -81,10 +81,7 @@
  *   pull. The network layer doesn't plumb a local accessor.
  */
 
-import type {
-  Output,
-  ProtocolInterfaceNode,
-} from "../../types/types.ts";
+import type { Output, ProtocolInterfaceNode } from "../../types/types.ts";
 import type { Peer, Policy } from "../types.ts";
 import { validatePeers } from "../network.ts";
 import { floodImpl } from "./flood.ts";

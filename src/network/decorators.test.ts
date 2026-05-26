@@ -71,7 +71,7 @@ Deno.test("bestEffort passes through observe unchanged (not a silent no-op)", as
 
   const ac = new AbortController();
   const seen: string[] = [];
-  for await (const r of wrapped.observe(["*"], ac.signal)) {
+  for await (const r of wrapped.observe(["**"], ac.signal)) {
     seen.push(...r);
     break;
   }
