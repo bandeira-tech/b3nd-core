@@ -22,7 +22,6 @@ await build({
   entryPoints: [
     { name: ".", path: "./mod.ts" },
     { name: "./types", path: "./src/types/types.ts" },
-    { name: "./url", path: "./src/url/url.ts" },
     { name: "./encoding", path: "./src/encoding/encoding.ts" },
     { name: "./hash", path: "./src/hash/hash.ts" },
     { name: "./encrypt", path: "./src/encrypt/mod.ts" },

@@ -13,12 +13,14 @@
  * who need to know which of their patterns matched re-run the match
  * locally, which is cheap and keeps the stream minimal.
  *
- * `observe(urls, signal)` accepts the read-url grammar but only uses
- * each url's routing key (the uri portion) for pattern matching. The
- * query string is ignored at the framework level.
+ * `observe(locators, signal)` accepts locators as opaque strings and
+ * matches them as segment-globs against emitted uris. The framework
+ * imposes no grammar — locators are split on `/` and fed straight to
+ * `matchPattern`. If a client needs query-string-style directives
+ * stripped before matching, that is the client's responsibility (see
+ * e.g. `@bandeira-tech/b3nd-save/url`'s `uriOf`).
  */
 import { matchPattern } from "../match-pattern/match-pattern.ts";
-import { routingKey } from "../url/url.ts";
 
 export type ObserveListener = (
   uri: string,
@@ -76,7 +78,7 @@ export class ObserveEmitter {
     urls: string[],
     signal: AbortSignal,
   ): AsyncIterable<readonly string[]> {
-    const patterns = urls.map((u) => routingKey(u).split("/"));
+    const patterns = urls.map((u) => u.split("/"));
     const queue: (readonly string[])[] = [];
     let wake: (() => void) | null = null;
 

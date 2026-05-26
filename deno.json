@@ -5,7 +5,6 @@
   "exports": {
     ".": "./mod.ts",
     "./types": "./src/types/types.ts",
-    "./url": "./src/url/url.ts",
     "./encoding": "./src/encoding/encoding.ts",
     "./hash": "./src/hash/hash.ts",
     "./encrypt": "./src/encrypt/mod.ts",

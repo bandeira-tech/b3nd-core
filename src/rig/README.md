@@ -79,9 +79,11 @@ total?.[1]; // count
 posts?.[1] as string[]; // ["mutable://app/users/alice", ...]
 ```
 
-The executing client parses urls with `parseUrl` from
-`@bandeira-tech/b3nd-core/url` and dispatches on `fn`. See
-[`src/url/url.ts`](../url/url.ts) for the grammar.
+Locators are opaque to the rig — it routes them by pattern matching
+and hands them to the executing client unchanged. Each client defines
+its own grammar; save's stores follow
+`@bandeira-tech/b3nd-save/url` (which exports `parseUrl`/`buildUrl`),
+but the rig itself imposes nothing.
 
 ## Encrypted Operations
 

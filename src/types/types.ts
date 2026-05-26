@@ -35,10 +35,10 @@ export interface HealthStatus {
  * Each client reports its health + capabilities.
  * The rig aggregates and adds schema info.
  *
- * `fns` advertises the set of read functions this node supports
- * (`read`, `ls`, `count`, plus any provider-defined `x-*`). Clients
- * may use it to validate a request before dispatch or to surface
- * capability info to humans/diagnostic UIs.
+ * `fns` advertises the set of named read functions this node supports,
+ * if its locator grammar defines such a concept. Provider-specific —
+ * the framework neither populates nor interprets it. Clients may use
+ * it to surface capability info to humans/diagnostic UIs.
  */
 export interface StatusResult {
   status: "healthy" | "degraded" | "unhealthy";
@@ -54,21 +54,13 @@ export interface StatusResult {
  * The framework treats `payload` as opaque on both sides. The first
  * element's meaning differs by direction:
  *
- * - **write** (`receive`, `send`, programs): `uri` is the destination
- *   address the payload is written under.
- * - **read** (`read` results): `uri` echoes the caller's input url so
- *   results pair positionally or by lookup. Payload shape depends on
- *   what the executing client / protocol decides — common patterns:
- *     - `fn=read`           → the stored value, or a protocol-defined
- *                              miss representation
- *     - `fn=ls&format=full` → `Output[]` of the entries under the prefix
- *     - `fn=ls&format=uris` → `string[]` — flat list of entry uris
- *     - `fn=count`          → `number`
- *     - `fn=x-…`            → provider-defined
- *
- * The framework does not dictate what a "miss" payload looks like, nor
- * what `null` means. Those are content/protocol concerns. Pick a
- * convention with your store/canon and document it there.
+ * - **write** (`receive`, `send`, programs): `uri` is the canonical
+ *   identifier the payload is written under.
+ * - **read** (`read` results): the first element echoes the caller's
+ *   input locator so results pair positionally or by lookup. Payload
+ *   shape is entirely the executing client's choice — what a miss
+ *   looks like, what a listing yields, what an extension function
+ *   returns, all defined by the client's locator-grammar contract.
  */
 export type Output<T = unknown> = [
   uri: string,
@@ -78,14 +70,14 @@ export type Output<T = unknown> = [
 /**
  * Read function for storage lookups.
  *
- * Single-url convenience used by program authors — wraps
- * `read([url])[0]`. Because `read` is 1:1 with its input, the tuple is
- * always present. What "miss" looks like in the payload is up to the
- * underlying protocol; the type parameter `T` should reflect that
- * (e.g. `T | undefined` if your protocol uses `undefined` for miss).
+ * Single-locator convenience used by program authors — wraps
+ * `read([locator])[0]`. Because `read` is 1:1 with its input, the
+ * tuple is always present. What "miss" looks like in the payload is up
+ * to the executing client; the type parameter `T` should reflect that
+ * (e.g. `T | undefined` if your client uses `undefined` for miss).
  */
 export type ReadFn = <T = unknown>(
-  url: string,
+  locator: string,
 ) => Promise<Output<T>>;
 
 /**
@@ -159,10 +151,21 @@ export interface ReceiveResult {
  * ProtocolInterfaceNode — the universal interface implemented by all clients.
  *
  * Four primitives:
- * - `receive` — all state changes (writes)
- * - `read`    — all queries; urls carry the function and parameters
- * - `observe` — stream of changes for a set of urls
+ * - `receive` — all state changes (writes), addressed by **uri**
+ * - `read`    — all queries, addressed by **locator**
+ * - `observe` — stream of changes, subscribed by **locator**
  * - `status`  — health + capabilities
+ *
+ * **URIs vs locators.** A *uri* is the canonical identifier of a
+ * resource — used for writes and emitted on observe so listeners learn
+ * which resource changed. A *locator* is any addressing string a caller
+ * passes to `read`/`observe`: it may be a bare uri, a pattern with
+ * wildcards, or a uri decorated with request-time directives. The
+ * framework treats locators as opaque — it routes them by string
+ * pattern matching and hands them to the executing client verbatim.
+ * What grammar (if any) a locator follows is a contract between the
+ * caller and the executing client (e.g. `@bandeira-tech/b3nd-save/url`
+ * defines save's locator grammar).
  *
  * All B3nd clients (Memory, HTTP, WebSocket, Postgres, IndexedDB, etc.)
  * implement this interface, enabling recursive composition and uniform usage.
@@ -171,9 +174,10 @@ export interface ProtocolInterfaceNode {
   /**
    * Receive a batch of outputs — the unified entry point for all state changes.
    *
-   * Each output is [uri, payload]. Clients interpret the payload per their
-   * role (storage clients persist, audit clients append, forwarders forward).
-   * Returns one ReceiveResult per output.
+   * Each output is `[uri, payload]` where `uri` is the canonical
+   * resource identifier the payload is written under. Clients interpret
+   * the payload per their role (storage clients persist, audit clients
+   * append, forwarders forward). Returns one `ReceiveResult` per output.
    *
    * The return type is `PromiseLike` (not `Promise`) so implementations
    * can return richer await-targets — e.g., the Rig returns an
@@ -183,51 +187,41 @@ export interface ProtocolInterfaceNode {
   receive(msgs: Output[]): PromiseLike<ReceiveResult[]>;
 
   /**
-   * Read a batch of urls. A url is a uri plus a query string of read
-   * parameters (`fn`, `limit`, `page`, `format`, `x-*` extensions, ...).
-   * See `./url.ts` for the grammar.
+   * Read a batch of locators.
    *
-   * **Shape: 1:1 with input.** Returns one `Output<T>` per input url,
-   * in input order. Each output is `[inputUrl, payload]` — the first
-   * element echoes the caller's url so results are addressable
-   * positionally or by lookup.
+   * Locators are opaque to the framework: their grammar is a contract
+   * between the caller and the executing client. The rig routes each
+   * locator to the first connection whose pattern accepts it (pure
+   * string pattern matching, no normalization).
    *
-   * Payload semantics are **content/protocol concerns** — the framework
-   * does not interpret them. The executing client decides what `read`
-   * misses, `ls` shapes, `count` answers, and `x-*` results look like;
-   * callers and stores agree on the convention out-of-band.
+   * **Shape: 1:1 with input.** Returns one `Output<T>` per input
+   * locator, in input order. Each output is `[inputLocator, payload]` —
+   * the first element echoes the caller's locator so results are
+   * addressable positionally or by lookup.
    *
-   * **Errors:**
-   *  - Transport / programmer errors throw (network down, malformed
-   *    url, unknown `fn`, no route accepts).
-   *  - Anything else — including "not found", auth refusals, etc. —
-   *    is encoded in the payload per the protocol's own convention.
+   * Payload semantics are entirely the client's concern. What "not
+   * found" looks like, what listing shapes look like, what extension
+   * functions return — all defined by the executing client and agreed
+   * with its callers out-of-band.
    *
-   * @example
-   * ```ts
-   * const [profile, total, posts] = await pin.read([
-   *   "mutable://users/alice",
-   *   "mutable://users/alice/posts/?fn=count",
-   *   "mutable://users/alice/posts/?format=uris&limit=12",
-   * ]);
-   * profile[1]; // whatever the store returns for a point read
-   * total[1];   // whatever the store returns for fn=count
-   * posts[1];   // whatever the store returns for fn=ls&format=uris
-   * ```
+   * **Errors:** transport / programmer errors throw (network down, no
+   * route accepts, grammar violations the client rejects). Anything
+   * else — "not found", auth refusals, etc. — is encoded in the payload
+   * per the client's convention.
    */
-  read<T = unknown>(urls: string[]): Promise<Output<T>[]>;
+  read<T = unknown>(locators: string[]): Promise<Output<T>[]>;
 
   /**
-   * Observe a batch of urls. Yields INV-style batches of uris that
-   * changed under any watched pattern. The observer reads each uri to
-   * learn its current state.
+   * Observe a batch of locators. Yields INV-style batches of uris that
+   * changed under any subscribed pattern. The observer reads each uri
+   * to learn its current state.
    *
-   * Each yield is a non-empty `readonly string[]` of concrete uris
-   * that fired in this batch. Backends may emit one uri per yield or
-   * coalesce many — the consumer iterates either way. Which of the
-   * caller's subscription urls matched is not surfaced; the caller
-   * can re-match locally if they need that routing, which keeps the
-   * wire (and in-process surface) minimal.
+   * Locators are matched against emitted uris as segment-globs — pure
+   * string pattern matching, no grammar awareness. Each yield is a
+   * non-empty `readonly string[]` of concrete uris that fired in this
+   * batch. Which of the caller's subscription locators matched is not
+   * surfaced; the caller can re-match locally if it needs that routing,
+   * which keeps the wire (and in-process surface) minimal.
    *
    * The `signal` controls lifecycle — abort to stop observing.
    *
@@ -241,7 +235,7 @@ export interface ProtocolInterfaceNode {
    * ```
    */
   observe(
-    urls: string[],
+    locators: string[],
     signal: AbortSignal,
   ): AsyncIterable<readonly string[]>;
 

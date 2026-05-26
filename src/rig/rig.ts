@@ -19,7 +19,6 @@ import type {
   ReceiveResult,
   StatusResult,
 } from "../types/types.ts";
-import { routingKey } from "../url/url.ts";
 import type { RigConfig, RigInfo } from "./types.ts";
 import type { ReceiveCtx, RigHooks, SendCtx } from "./hooks.ts";
 import { resolveHooks, runAfter, runBefore, runOnError } from "./hooks.ts";
@@ -676,15 +675,15 @@ export class Rig {
   // ── Observation ──
 
   /**
-   * Read a batch of urls. Sequential dispatch — each url goes to the
-   * first connection whose route accepts its routing key. See `url.ts`
-   * for the grammar.
+   * Read a batch of locators. Each locator goes to the first connection
+   * whose route pattern accepts it. Locators are opaque strings; the
+   * executing client owns any grammar interpretation.
    */
   async read<T = unknown>(urls: string[]): Promise<Output<T>[]> {
-    // Before-hook per url. The hook sees just `{ url }`; if it wants
-    // the parsed view it calls `parseUrl(ctx.url)` itself. Returning
-    // `{ ctx: { url: newUrl } }` rewrites; otherwise the url passes
-    // through unchanged.
+    // Before-hook per url. The hook sees just `{ url }`; locators are
+    // opaque to the framework, so if a hook wants to inspect the
+    // grammar it brings its own parser. Returning `{ ctx: { url:
+    // newUrl } }` rewrites; otherwise the url passes through unchanged.
     const finalUrls: string[] = [];
     for (const url of urls) {
       const ctx = await runBefore(this._hooks.beforeRead, { url });
@@ -699,7 +698,7 @@ export class Rig {
       for (const url of finalUrls) {
         this._events.emit("read:error", {
           op: "read",
-          uri: routingKey(url),
+          uri: url,
           error: err instanceof Error ? err.message : String(err),
           ts: Date.now(),
         });
@@ -952,11 +951,10 @@ function createRouteDispatch(
       // resulting Output<T> in the matching slot.
       const out: Output<T>[] = new Array(urls.length);
       await Promise.all(urls.map(async (url, i) => {
-        const key = routingKey(url);
-        const conn = read.find((s) => s.accepts(key));
+        const conn = read.find((s) => s.accepts(url));
         if (!conn) {
           // Programmer error — this rig isn't configured for this url.
-          throw new Error(`No read route accepts ${key}`);
+          throw new Error(`No read route accepts ${url}`);
         }
         const [r] = await conn.client.read<T>([url]);
         out[i] = r;
@@ -973,8 +971,7 @@ function createRouteDispatch(
       // connections — that is the aggregating client's job.
       const groups = new Map<Connection, string[]>();
       for (const url of urls) {
-        const key = routingKey(url);
-        const conn = observe.find((c) => c.accepts(key));
+        const conn = observe.find((c) => c.accepts(url));
         if (!conn) continue;
         const arr = groups.get(conn) ?? [];
         arr.push(url);
