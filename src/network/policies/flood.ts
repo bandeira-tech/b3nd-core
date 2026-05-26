@@ -11,14 +11,10 @@
  * Use as a rig connection:
  *
  * ```ts
- * import { Rig, connection } from "@bandeira-tech/b3nd-core";
+ * import { connection, Rig } from "@bandeira-tech/b3nd-core";
  * import { flood, peer } from "@bandeira-tech/b3nd-core/network";
- * import { HttpClient } from "@bandeira-tech/b3nd-move/http/client";
  *
- * const peers = connection(
- *   flood([peer(new HttpClient({ url: "https://node-b" }))]),
- *   ["*"],
- * );
+ * const peers = connection(flood([peer(remoteClient)]), ["*"]);
  * const rig = new Rig({
  *   routes: { receive: [peers], read: [peers], observe: [peers] },
  * });

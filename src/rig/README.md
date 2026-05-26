@@ -5,37 +5,39 @@ The universal harness for b3nd. One import, convention over configuration.
 ## Quick Start
 
 ```typescript
-import { connection, Identity, Rig } from "@bandeira-tech/b3nd-core/rig";
-import { DataStoreClient } from "@bandeira-tech/b3nd-save/clients";
-import { MemoryStore } from "@bandeira-tech/b3nd-save/memory";
 import {
-  message,
-  messageDataHandler,
-  messageDataProgram,
-} from "@bandeira-tech/b3nd-canon/msg";
+  connection,
+  FunctionalClient,
+  Identity,
+  Rig,
+} from "@bandeira-tech/b3nd-core";
 
 const id = await Identity.fromSeed("my-secret");
 
-const local = connection(new DataStoreClient(new MemoryStore()), ["*"]);
+const store = new Map<string, unknown>();
+const localClient = new FunctionalClient({
+  receive: (msgs) => {
+    for (const [uri, payload] of msgs) store.set(uri, payload);
+    return Promise.resolve(msgs.map(() => ({ accepted: true })));
+  },
+  read: (urls) =>
+    Promise.resolve(
+      urls.flatMap((u) => (store.has(u) ? [[u, store.get(u)]] : [])),
+    ),
+});
+
+const local = connection(localClient, ["*"]);
 const rig = new Rig({
   routes: {
     receive: [local],
     read: [local],
     observe: [local],
   },
-  // Canon: program classifies hash:// envelopes; handler decomposes
-  // them into envelope + outputs + null-payload deletions for inputs.
-  programs: { "hash://sha256": messageDataProgram },
-  handlers: { "msgdata:valid": messageDataHandler },
 });
 
-// Identity signs; the canon decomposes; the rig dispatches.
-const outputs = [["mutable://myapp/config", { theme: "dark" }]];
-const auth = [await id.sign({ inputs: [], outputs })];
-const envelope = await message({ auth, inputs: [], outputs });
-await rig.send([envelope]); // handler emits the inner outputs
-
-const [{ record }] = await rig.read(["mutable://myapp/config"]);
+await rig.receive([["mutable://myapp/config", { theme: "dark" }]]);
+const [config] = await rig.read(["mutable://myapp/config"]);
+config?.[1]; // { theme: "dark" }
 ```
 
 ## Two Core Actions
@@ -63,43 +65,17 @@ await rig.receive([["mutable://open/external", { source: "webhook" }]]);
 ## Observation
 
 ```typescript
-// `read(urls)` returns `Output[]` 1:1 with input — one [inputUrl, payload]
-// slot per requested url, in input order. Payload shape depends on `fn`:
-//   read              → T | undefined
-//   ls (format=full)  → Output<T>[]
-//   ls (format=uris)  → string[]
-//   count             → number
-const [profile, total, posts] = await rig.read([
-  "mutable://app/users/alice", // fn=read (default)
-  "mutable://app/users/?fn=count", // payload: number
-  "mutable://app/users/?format=uris", // payload: string[]
-]);
-profile?.[1]; // user record (or undefined on miss)
-total?.[1]; // count
-posts?.[1] as string[]; // ["mutable://app/users/alice", ...]
+// `read(locators)` returns `Output[]` 1:1 with input — one
+// `[inputLocator, payload]` slot per requested locator, in input order.
+// Payload shape is the executing client's concern; the framework does
+// not interpret it.
+const [profile] = await rig.read(["mutable://app/users/alice"]);
+profile?.[1]; // whatever the client returns for that locator
 ```
 
-The executing client parses urls with `parseUrl` from
-`@bandeira-tech/b3nd-core/url` and dispatches on `fn`. See
-[`src/url/url.ts`](../url/url.ts) for the grammar.
-
-## Encrypted Operations
-
-```typescript
-// Encrypt outputs, then sign and send
-const plaintext = new TextEncoder().encode(JSON.stringify(secret));
-const encrypted = await id.encrypt(plaintext, recipientPubkey);
-const outputs = [[uri, encrypted]];
-const auth = [await id.sign({ inputs: [], outputs })];
-const envelope = await message({ auth, inputs: [], outputs });
-await rig.send([envelope]); // canon decomposes; outputs land encrypted
-
-// Read and decrypt
-const results = await rig.read(uri);
-const payload = results[0]?.record?.data;
-const decrypted = await id.decrypt(payload);
-const secret = JSON.parse(new TextDecoder().decode(decrypted));
-```
+Locators are opaque to the rig — it matches them against route patterns
+by segment-glob and hands them to the executing client unchanged. Each
+client defines its own locator grammar.
 
 ## Reactive
 
@@ -252,7 +228,7 @@ Event names: `send:success`, `send:error`, `receive:success`, `receive:error`,
 URI-pattern reactions that fire on successful writes (send or receive).
 
 ```typescript
-const local = connection(new DataStoreClient(new MemoryStore()), ["*"]);
+const local = connection(localClient, ["*"]);
 const rig = new Rig({
   routes: { receive: [local], read: [local], observe: [local] },
   reactions: {
@@ -318,7 +294,7 @@ await rig.status(); // StatusResult { status, schema }
 
 ```typescript
 // Minimal
-const local = connection(new DataStoreClient(new MemoryStore()), ["*"]);
+const local = connection(localClient, ["*"]);
 const rig = new Rig({
   routes: { receive: [local], read: [local], observe: [local] },
 });
@@ -340,23 +316,6 @@ const rig = new Rig({
 });
 ```
 
-## HTTP API
-
-Transports are external to core. HTTP, WebSocket, gRPC-HTTP, and MCP
-live in [@bandeira-tech/b3nd-move](https://github.com/bandeira-tech/b3nd-move)
-and consume a rig (or any `ProtocolInterfaceNode`) over the PIN
-interface:
-
-```typescript
-import { httpService } from "@bandeira-tech/b3nd-move/http/service";
-
-Deno.serve({ port: 3000 }, httpService(rig, { statusMeta: { version: "1.0" } }));
-```
-
-The rig stays pure (orchestration only). `httpService()` returns a
-standard `(Request) => Promise<Response>` handler — plug into
-Deno.serve, Hono, Express, Cloudflare Workers.
-
 ## ProtocolInterfaceNode
 
 The Rig structurally satisfies `ProtocolInterfaceNode` (4 methods: `receive`,
@@ -371,17 +330,3 @@ createHandler(rig, config);
 loadConfig(rig, operatorKey, nodeId);
 ```
 
-## Batch Operations
-
-```typescript
-// Send multiple signed envelopes in sequence
-for (const env of envelopes) {
-  const auth = [await id.sign({ inputs: env.inputs, outputs: env.outputs })];
-  const envelope = await message({
-    auth,
-    inputs: env.inputs,
-    outputs: env.outputs,
-  });
-  await rig.send([envelope]); // requires messageDataHandler registered
-}
-```

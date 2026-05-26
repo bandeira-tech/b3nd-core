@@ -1,9 +1,7 @@
 /**
  * @module
- * ObserveEmitter — the shared listener + async-iterator machinery used by
- * `ProtocolInterfaceNode` implementations (e.g. the Store→Client adapters
- * `SimpleClient` / `DataStoreClient` in `@bandeira-tech/b3nd-save`) to expose
- * `observe()`.
+ * ObserveEmitter — the shared listener + async-iterator machinery
+ * `ProtocolInterfaceNode` implementations use to expose `observe()`.
  *
  * Observe is INV-style notification: each successful write or delete
  * yields a `readonly string[]` — the batch of concrete uris that
@@ -13,12 +11,13 @@
  * who need to know which of their patterns matched re-run the match
  * locally, which is cheap and keeps the stream minimal.
  *
- * `observe(urls, signal)` accepts the read-url grammar but only uses
- * each url's routing key (the uri portion) for pattern matching. The
- * query string is ignored at the framework level.
+ * `observe(locators, signal)` accepts locators as opaque strings and
+ * matches them as segment-globs against emitted uris. The framework
+ * imposes no grammar — locators are split on `/` and fed straight to
+ * `matchPattern`. Any normalization (e.g. stripping request-time
+ * directives before matching) is the executing client's responsibility.
  */
 import { matchPattern } from "../match-pattern/match-pattern.ts";
-import { routingKey } from "../url/url.ts";
 
 export type ObserveListener = (
   uri: string,
@@ -76,7 +75,7 @@ export class ObserveEmitter {
     urls: string[],
     signal: AbortSignal,
   ): AsyncIterable<readonly string[]> {
-    const patterns = urls.map((u) => routingKey(u).split("/"));
+    const patterns = urls.map((u) => u.split("/"));
     const queue: (readonly string[])[] = [];
     let wake: (() => void) | null = null;
 

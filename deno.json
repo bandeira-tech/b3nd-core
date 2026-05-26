@@ -1,11 +1,10 @@
 {
   "name": "@bandeira-tech/b3nd-core",
-  "version": "0.20.0",
+  "version": "0.21.0",
   "description": "B3nd Core — framework foundation: types, encoding, clients, rig, network, hash, encrypt",
   "exports": {
     ".": "./mod.ts",
     "./types": "./src/types/types.ts",
-    "./url": "./src/url/url.ts",
     "./encoding": "./src/encoding/encoding.ts",
     "./hash": "./src/hash/hash.ts",
     "./encrypt": "./src/encrypt/mod.ts",

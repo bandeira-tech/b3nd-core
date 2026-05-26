@@ -19,7 +19,7 @@
  *
  * @example A single client serving all three ops
  * ```ts
- * import { connection, Rig } from "@bandeira-tech/b3nd-sdk";
+ * import { connection, Rig } from "@bandeira-tech/b3nd-core";
  *
  * const node = connection(httpClient, ["mutable://*", "hash://*"]);
  *

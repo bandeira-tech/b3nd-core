@@ -37,11 +37,11 @@ export interface ReceiveCtx {
 /**
  * Context for a read hook.
  *
- * Carries only the `url` — the full url string, including any
- * `?fn=…&…` query. `parseUrl` is a cheap pure function; call it from
- * the hook if you need the parsed view. Before-hooks may rewrite the
- * url by returning `{ ctx: { url: newUrl } }`; the rig dispatches the
- * returned url unchanged.
+ * Carries only the `url` — an opaque locator string the framework
+ * passes through unchanged. If a hook needs to inspect the locator's
+ * grammar it brings its own parser. Before-hooks may rewrite the
+ * locator by returning `{ ctx: { url: newUrl } }`; the rig dispatches
+ * the returned locator unchanged.
  *
  * If you need to manipulate downstream behavior more invasively, wrap
  * the executing client itself rather than threading transformations

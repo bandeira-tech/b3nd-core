@@ -1,5 +1,5 @@
 /**
- * @module @bandeira-tech/b3nd-sdk/network
+ * @module @bandeira-tech/b3nd-core/network
  *
  * Peer-network primitives.
  *
