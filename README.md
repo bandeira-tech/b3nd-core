@@ -93,8 +93,8 @@ failure channel and no framework opinion on payload content:
 - **Transport / programmer errors throw**: network down, malformed url, no route
   accepts, unknown reserved fn — they propagate as exceptions.
 - **Anything else lives in the payload by protocol convention.** Miss
-  representation, auth refusals, domain errors, binary encoding — all chosen
-  and documented by your store / canon, not by the framework.
+  representation, auth refusals, domain errors, binary encoding — all chosen and
+  documented by your store / canon, not by the framework.
 
 The framework reserves the `b3nd://` namespace for any uri a protocol has to
 invent (count answers, observe envelopes, cursors). Each protocol picks its own
@@ -117,7 +117,8 @@ for await (const uris of pin.observe(["mutable://app/*"], ac.signal)) {
 
 ### Connections
 
-Connections bind clients to URI patterns. The rig routes per operation:
+Connections bind clients to an `Acceptance` — the predicate "does this URI route
+here?" The rig routes per operation:
 
 - **receive** — broadcast to every matching connection.
 - **read** — for each url, the first connection that accepts the routing key
@@ -135,6 +136,52 @@ const rig = new Rig({
   },
 });
 ```
+
+Pattern lists are the common case — under the hood they're `patterns(...ps)`,
+one implementation of `Acceptance`. For anything richer, hand the connection an
+explicit acceptance:
+
+```typescript
+import { and, not, prefix, schemas } from "@bandeira-tech/b3nd-core";
+
+connection(client, schemas("notify")); // by URI scheme
+connection(client, prefix("mutable://acct/")); // by string prefix
+connection(
+  client,
+  and(
+    schemas("mutable"),
+    not(prefix("mutable://test/")),
+  ),
+); // composed predicate
+```
+
+`Acceptance` carries an optional `describe()` for wire publication —
+`patterns(...)` and the built-ins describe themselves as `string[]` / structured
+JSON so remote nodes can pre-filter. Composed (`and`/`not`/`or`) and custom
+predicates are local-only.
+
+#### Route shorthand
+
+Routes can also be passed as `[acceptance, client, id?]` tuples — the same
+`[address-spec, executor]` shape as `Output = [uri, payload]`. The rig
+normalizes them to connections at construction time:
+
+```typescript
+const rig = new Rig({
+  routes: {
+    receive: [
+      [["mutable://*", "hash://*"], primary, "primary"],
+      [prefix("mutable://acct/"), cache],
+      [schemas("notify"), webhooks],
+    ],
+    read: [[["*"], primary]],
+    observe: [[["mutable://*"], primary]],
+  },
+});
+```
+
+Use `connection(...)` when you want to share the same value across multiple
+routes, or hand it to non-rig consumers (e.g. `network()`).
 
 ### Programs and Handlers
 
@@ -198,8 +245,8 @@ const rig = new Rig({
 ### HTTP API
 
 Core ships no HTTP/WS transports of its own — they live in
-`@bandeira-tech/b3nd-move` and consume a rig (or any
-`ProtocolInterfaceNode`) over the wire-stable PIN interface:
+`@bandeira-tech/b3nd-move` and consume a rig (or any `ProtocolInterfaceNode`)
+over the wire-stable PIN interface:
 
 ```typescript
 import { httpService } from "@bandeira-tech/b3nd-move/http/service";
@@ -207,8 +254,8 @@ import { httpService } from "@bandeira-tech/b3nd-move/http/service";
 Deno.serve({ port: 9942 }, httpService(rig));
 ```
 
-See [b3nd-move](https://github.com/bandeira-tech/b3nd-move) for HTTP,
-WebSocket, gRPC-HTTP, and MCP transports — all framework-agnostic
+See [b3nd-move](https://github.com/bandeira-tech/b3nd-move) for HTTP, WebSocket,
+gRPC-HTTP, and MCP transports — all framework-agnostic
 `(Request) => Promise<Response>` handlers.
 
 ### Network
@@ -225,21 +272,21 @@ const stop = network(localRig, [
 
 ## Modules
 
-| Module             | What's in it                                                            |
-| ------------------ | ----------------------------------------------------------------------- |
-| `types`            | `ProtocolInterfaceNode`, `Output`, `Message`, `B3ndError`, `Errors`, …  |
-| `url`              | URL grammar + helpers (`count`, `list`, `listUris`, `x`, `parseUrl`)    |
-| `encoding`         | Base64 / hex primitives                                                 |
-| `hash`             | SHA-256                                                                 |
-| `encrypt`          | Ed25519 signing, X25519 encryption, AES-GCM, PBKDF2                     |
-| `rig`              | Rig, Identity, connections, hooks, events, reactions                    |
-| `identity`         | `Identity` (re-export of `rig/identity`)                                |
-| `network`          | `network()`, `peer()`, flood, path-vector, tell-and-read                |
-| `client-console`   | Console output client (write-only, debug sink)                          |
+| Module           | What's in it                                                           |
+| ---------------- | ---------------------------------------------------------------------- |
+| `types`          | `ProtocolInterfaceNode`, `Output`, `Message`, `B3ndError`, `Errors`, … |
+| `url`            | URL grammar + helpers (`count`, `list`, `listUris`, `x`, `parseUrl`)   |
+| `encoding`       | Base64 / hex primitives                                                |
+| `hash`           | SHA-256                                                                |
+| `encrypt`        | Ed25519 signing, X25519 encryption, AES-GCM, PBKDF2                    |
+| `rig`            | Rig, Identity, connections, hooks, events, reactions                   |
+| `identity`       | `Identity` (re-export of `rig/identity`)                               |
+| `network`        | `network()`, `peer()`, flood, path-vector, tell-and-read               |
+| `client-console` | Console output client (write-only, debug sink)                         |
 
-Stores (Postgres, SQLite, S3, IndexedDB, …) and Store→PIN client adapters
-live in [@bandeira-tech/b3nd-save](https://github.com/bandeira-tech/b3nd-save).
-HTTP, WebSocket, gRPC-HTTP, and MCP transports live in
+Stores (Postgres, SQLite, S3, IndexedDB, …) and Store→PIN client adapters live
+in [@bandeira-tech/b3nd-save](https://github.com/bandeira-tech/b3nd-save). HTTP,
+WebSocket, gRPC-HTTP, and MCP transports live in
 [@bandeira-tech/b3nd-move](https://github.com/bandeira-tech/b3nd-move).
 
 ## Subpath Exports

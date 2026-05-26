@@ -12,10 +12,31 @@ import type { HooksConfig } from "./hooks.ts";
 import type { EventHandler, RigEventName } from "./events.ts";
 import type { ReactionHandler } from "./reactions.ts";
 import type { Connection } from "./connection.ts";
+import type { Acceptance } from "./acceptance.ts";
 
 // Re-export so app-specific libs can pull `ProtocolInterfaceNode`
 // from the rig module — keeps the import surface uniform.
 export type { ProtocolInterfaceNode };
+
+/**
+ * `Route` tuple — the shorthand for a connection in a routes list.
+ *
+ * `[acceptance, client, id?]` is normalized to a `Connection` at rig
+ * construction time. The shape mirrors `Output = [uri, payload]`:
+ * an address-spec paired with the thing that executes it.
+ *
+ * For the common pattern-list case, `acceptance` may be a `string[]`
+ * — interpreted as `patterns(...arr)`. Pass an explicit `Acceptance`
+ * for `prefix`, `schemas`, or a custom predicate.
+ */
+export type Route = readonly [
+  acceptance: Acceptance | string[],
+  client: ProtocolInterfaceNode,
+  id?: string,
+];
+
+/** A connection entry — either a built `Connection` or a `Route` tuple. */
+export type ConnectionLike = Connection | Route;
 
 /**
  * Per-operation route bindings.
@@ -38,9 +59,9 @@ export type { ProtocolInterfaceNode };
  * for a different op means a separate `connection(...)` call.
  */
 export interface RigRoutes {
-  receive?: Connection[];
-  read?: Connection[];
-  observe?: Connection[];
+  receive?: ConnectionLike[];
+  read?: ConnectionLike[];
+  observe?: ConnectionLike[];
 }
 
 /**

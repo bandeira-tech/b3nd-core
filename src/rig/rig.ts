@@ -28,6 +28,8 @@ import { RigEventEmitter } from "./events.ts";
 import type { ReactionHandler } from "./reactions.ts";
 import { ReactionRegistry } from "./reactions.ts";
 import type { Connection } from "./connection.ts";
+import { connection as makeConnection } from "./connection.ts";
+import type { ConnectionLike, Route } from "./types.ts";
 import type { OperationHandle } from "./operation-handle.ts";
 import { OperationHandleImpl } from "./operation-handle.ts";
 
@@ -94,9 +96,9 @@ export class Rig {
 
   constructor(config: RigConfig) {
     const routes = config.routes;
-    const receive = routes?.receive ?? [];
-    const read = routes?.read ?? [];
-    const observe = routes?.observe ?? [];
+    const receive = (routes?.receive ?? []).map(normalizeRoute);
+    const read = (routes?.read ?? []).map(normalizeRoute);
+    const observe = (routes?.observe ?? []).map(normalizeRoute);
 
     if (
       receive.length === 0 && read.length === 0 && observe.length === 0
@@ -106,9 +108,9 @@ export class Rig {
       );
     }
 
-    this._receiveRoutes = Object.freeze([...receive]);
-    this._readRoutes = Object.freeze([...read]);
-    this._observeRoutes = Object.freeze([...observe]);
+    this._receiveRoutes = Object.freeze(receive);
+    this._readRoutes = Object.freeze(read);
+    this._observeRoutes = Object.freeze(observe);
     this._dispatch = createRouteDispatch({
       receive: this._receiveRoutes,
       read: this._readRoutes,
@@ -1016,3 +1018,19 @@ function createRouteDispatch(
 
 // Compile-time: Rig structurally satisfies ProtocolInterfaceNode.
 (null! as Rig) satisfies ProtocolInterfaceNode;
+
+/**
+ * Normalize a `ConnectionLike` to a `Connection`.
+ *
+ * Built `Connection` values pass through unchanged. `Route` tuples
+ * (`[acceptance, client, id?]`) are converted via `connection(...)`.
+ * Detection is by tuple shape: arrays of length 2 or 3 whose second
+ * slot looks like a client are treated as routes.
+ */
+function normalizeRoute(c: ConnectionLike): Connection {
+  if (Array.isArray(c)) {
+    const [acceptance, client, id] = c as Route;
+    return makeConnection(client, acceptance, id ? { id } : undefined);
+  }
+  return c as Connection;
+}
