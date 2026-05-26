@@ -164,8 +164,7 @@ export interface ReceiveResult {
  * framework treats locators as opaque — it routes them by string
  * pattern matching and hands them to the executing client verbatim.
  * What grammar (if any) a locator follows is a contract between the
- * caller and the executing client (e.g. `@bandeira-tech/b3nd-save/url`
- * defines save's locator grammar).
+ * caller and the executing client.
  *
  * All B3nd clients (Memory, HTTP, WebSocket, Postgres, IndexedDB, etc.)
  * implement this interface, enabling recursive composition and uniform usage.
@@ -245,13 +244,6 @@ export interface ProtocolInterfaceNode {
    */
   status(): Promise<StatusResult>;
 }
-
-// HttpClientConfig, WebSocketClientConfig, WebSocketRequest, and
-// WebSocketResponse moved to @bandeira-tech/b3nd-move in 0.17
-// (each lives next to its client implementation).
-// Store, StoreEntry, StoreWriteResult, StoreCapabilities moved to
-// @bandeira-tech/b3nd-save in 0.18 — Store is an internal abstraction
-// of the save layer, not a core protocol concept.
 
 /**
  * Structured error codes for programmatic error handling.
@@ -363,6 +355,3 @@ export interface ContentData<T = unknown> {
   encoding?: string;
   data: T;
 }
-
-// WebSocketRequest / WebSocketResponse moved to
-// @bandeira-tech/b3nd-move/ws/client in 0.17.

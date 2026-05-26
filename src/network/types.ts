@@ -1,6 +1,6 @@
 /**
  * @module
- * Types for `@bandeira-tech/b3nd-sdk/network`.
+ * Types for `@bandeira-tech/b3nd-core/network`.
  *
  * Two mental primitives, both just functions over a peer list:
  *

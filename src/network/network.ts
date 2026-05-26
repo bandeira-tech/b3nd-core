@@ -8,7 +8,7 @@
  * every peer loop and awaits clean teardown.
  *
  * ```ts
- * import { network, peer, pathVector } from "@bandeira-tech/b3nd-sdk/network";
+ * import { network, peer, pathVector } from "@bandeira-tech/b3nd-core/network";
  *
  * const unbind = network(rig, peers);                           // no policies
  * const unbind = network(rig, peers, [myPolicy]);               // one policy

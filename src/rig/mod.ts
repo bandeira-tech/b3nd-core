@@ -3,19 +3,15 @@
  * b3nd Rig — the universal harness for b3nd networks.
  *
  * Identity, connection, send/receive, and observation.
- * For the full toolkit (hash, encrypt, message layer),
- * use the bundle: `@bandeira-tech/b3nd-web` or `@bandeira-tech/b3nd-sdk`.
  *
  * @example
  * ```typescript
- * import { Rig, connection } from "@bandeira-tech/b3nd-core/rig";
- * import { Identity } from "@bandeira-tech/b3nd-core/identity";
+ * import { connection, Rig } from "@bandeira-tech/b3nd-core/rig";
  *
- * const id = await Identity.fromSeed("my-secret");
  * const rig = new Rig({
  *   routes: { receive: [local], read: [local], observe: [local] },
  * });
- * await rig.send([["mutable://app/key", { hello: "world" }]]);
+ * await rig.receive([["mutable://app/key", { hello: "world" }]]);
  * ```
  */
 
@@ -65,6 +61,3 @@ export { RigEventEmitter } from "./events.ts";
 // ── Reactions ──
 export type { ReactionHandler } from "./reactions.ts";
 export { matchPattern, ReactionRegistry } from "./reactions.ts";
-
-// httpApi moved to @bandeira-tech/b3nd-move/http/service in 0.17.
-// Backend factory moved to @bandeira-tech/b3nd-save/factory in 0.16.

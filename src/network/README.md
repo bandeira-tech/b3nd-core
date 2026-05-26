@@ -145,18 +145,14 @@ seen-set hook.
 ```ts
 import { connection, Rig } from "@bandeira-tech/b3nd-core";
 import { network, peer } from "@bandeira-tech/b3nd-core/network";
-import { SimpleClient } from "@bandeira-tech/b3nd-save/clients";
-import { MemoryStore } from "@bandeira-tech/b3nd-save/memory";
-import { HttpClient } from "@bandeira-tech/b3nd-move/http/client";
 
-const local = new SimpleClient(new MemoryStore());
 const peers = [
-  peer(new HttpClient({ url: "https://node-b" }), { id: "B" }),
-  peer(new HttpClient({ url: "https://node-c" }), { id: "C" }),
+  peer(remoteClientB, { id: "B" }),
+  peer(remoteClientC, { id: "C" }),
 ];
 
 const rig = new Rig({
-  connections: [connection(local, { receive: ["*"], read: ["*"] })],
+  connections: [connection(localClient, { receive: ["*"], read: ["*"] })],
   reactions: {
     "mutable://chat/:id": (uri) => console.log("saw", uri),
   },
@@ -174,11 +170,10 @@ await unbind();
 ```ts
 import { connection, Rig } from "@bandeira-tech/b3nd-core";
 import { flood, peer } from "@bandeira-tech/b3nd-core/network";
-import { HttpClient } from "@bandeira-tech/b3nd-move/http/client";
 
 const peers = [
-  peer(new HttpClient({ url: "https://node-b" }), { id: "B" }),
-  peer(new HttpClient({ url: "https://node-c" }), { id: "C" }),
+  peer(remoteClientB, { id: "B" }),
+  peer(remoteClientC, { id: "C" }),
 ];
 
 const rig = new Rig({
@@ -187,8 +182,8 @@ const rig = new Rig({
   ],
 });
 
-await rig.receive([["mutable://shared/hello", {}, { text: "hi" }]]);
-const r = await rig.read("mutable://shared/hello");
+await rig.receive([["mutable://shared/hello", { text: "hi" }]]);
+const r = await rig.read(["mutable://shared/hello"]);
 ```
 
 ## Example: content sync with `tellAndRead`
@@ -241,13 +236,12 @@ and "I already have it" short-circuits are all expressible in the
 ```ts
 import { connection, Rig } from "@bandeira-tech/b3nd-core";
 import { network, pathVector, peer } from "@bandeira-tech/b3nd-core/network";
-import { HttpClient } from "@bandeira-tech/b3nd-move/http/client";
 
 // Peer ids MUST be the peers' signing pubkey (hex) for pathVector to
 // recognize them in the signer chain.
 const peers = [
-  peer(new HttpClient({ url: "https://node-b" }), { id: bPubkeyHex }),
-  peer(new HttpClient({ url: "https://node-c" }), { id: cPubkeyHex }),
+  peer(remoteClientB, { id: bPubkeyHex }),
+  peer(remoteClientC, { id: cPubkeyHex }),
 ];
 
 const rig = new Rig({
@@ -280,16 +274,6 @@ peer (e.g., pull a full payload after an announcement), it calls
 `ctx.source.client.read(uri)` or `ctx.source.client.receive([msg])`. No special
 side-channel API — everything is addressed content flowing through
 `ProtocolInterfaceNode`. Works in browsers, serverless, embedded.
-
-## Roadmap
-
-| PR   | Status     | Scope                                                                                                      |
-| ---- | ---------- | ---------------------------------------------------------------------------------------------------------- |
-| PR-1 | ✅ merged  | `peer`, network skeleton, subpath export, tests                                                            |
-| PR-2 | ✅ merged  | observe-bridge, source tagging, unbind                                                                     |
-| PR-3 | ✅ merged  | `network()` verb + `flood(peers)` + `pathVector(peers)` + policy-chain composition inline                  |
-| PR-4 | ✅ merged  | `tellAndRead` — INV/READ-style content sync; outbound strategy factory + inbound Policy                    |
-| PR-5 | ✅ shipped | `bestEffort` peer decorator; `createPeerClients → Peer[]`; retire `b3nd-combinators`; full-lib review pass |
 
 ## Tests
 

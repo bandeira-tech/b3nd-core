@@ -12,10 +12,8 @@ import type { Peer, PeerDecorator } from "./types.ts";
  *
  * @example
  * ```ts
- * import { HttpClient } from "@bandeira-tech/b3nd-move/http/client";
- *
  * // Anonymous peer — id auto-assigned at runtime
- * peer(new HttpClient({ url: "https://node-b" }))
+ * peer(remoteClient)
  *
  * // Protocol with path-vector loop avoidance — id matches the peer's pubkey
  * peer(client, { id: peerPubkeyHex })

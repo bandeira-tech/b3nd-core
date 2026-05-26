@@ -11,7 +11,7 @@
  *
  * @example
  * ```typescript
- * import { computeSha256, generateHashUri, hashValidator } from "@bandeira-tech/b3nd-sdk/hash";
+ * import { computeSha256, generateHashUri, hashValidator } from "@bandeira-tech/b3nd-core/hash";
  *
  * const data = { title: "Hello", content: "World" };
  * const hash = await computeSha256(data);
@@ -139,7 +139,7 @@ export function isValidSha256Hash(hash: string): boolean {
  *
  * @example
  * ```typescript
- * import { hashValidator } from "@bandeira-tech/b3nd-sdk/hash";
+ * import { hashValidator } from "@bandeira-tech/b3nd-core/hash";
  *
  * const schema = {
  *   "hash://sha256": hashValidator(),

@@ -39,10 +39,9 @@ export interface ReceiveCtx {
  *
  * Carries only the `url` — an opaque locator string the framework
  * passes through unchanged. If a hook needs to inspect the locator's
- * grammar it brings its own parser (e.g.,
- * `@bandeira-tech/b3nd-save/url` for save's grammar). Before-hooks may
- * rewrite the locator by returning `{ ctx: { url: newUrl } }`; the rig
- * dispatches the returned locator unchanged.
+ * grammar it brings its own parser. Before-hooks may rewrite the
+ * locator by returning `{ ctx: { url: newUrl } }`; the rig dispatches
+ * the returned locator unchanged.
  *
  * If you need to manipulate downstream behavior more invasively, wrap
  * the executing client itself rather than threading transformations
