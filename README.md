@@ -212,6 +212,16 @@ import { ... } from "@bandeira-tech/b3nd-core/network";       // network primiti
 import { ... } from "@bandeira-tech/b3nd-core/client-console"; // console client
 ```
 
+## Guides
+
+- [Building on b3nd — a field book](docs/book/README.md): a chaptered,
+  example-first guide that grows one protocol from a single write to a
+  distributed, multi-behavior node. Introduces the **Canon → Domain PIN → App →
+  Rig** model and the `composeApps` primitive.
+- [Building a b3nd backend](docs/backends.md): the `ProtocolInterfaceNode`
+  contract for store/transport/aggregator authors.
+- [Read cookbook](docs/cookbook.md): real-world `read` batch shapes.
+
 ## Development
 
 ```bash
