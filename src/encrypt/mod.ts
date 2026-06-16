@@ -10,6 +10,8 @@ const canonicalize = _canonicalize as unknown as (
   input: unknown,
 ) => string | undefined;
 
+export { deriveObfuscatedPath } from "./utils.ts";
+
 // Types
 export interface KeyPair {
   publicKey: CryptoKey;
