@@ -31,6 +31,26 @@ export interface HealthStatus {
 }
 
 /**
+ * URI prefixes a node serves, per verb. Rigs aggregate this from
+ * downstream nodes (each node self-reports its own). Custom clients
+ * may report whatever they choose to expose. Asymmetric mounts (e.g.
+ * write-only ingest) report faithfully — a prefix may appear under
+ * one verb and not another.
+ *
+ * Discovery clients (UIs, agents) use this to find places where they
+ * can mount or observe. For example, a chat looks for prefixes that
+ * appear in both `receive` and `observe`.
+ */
+export interface ResourceCapabilities {
+  /** URI prefixes this node can serve `read` on. */
+  read?: string[];
+  /** URI prefixes this node can serve `observe` on. */
+  observe?: string[];
+  /** URI prefixes this node accepts on `receive`. */
+  receive?: string[];
+}
+
+/**
  * Status response — replaces health() + getSchema().
  * Each client reports its health + capabilities.
  * The rig aggregates and adds schema info.
@@ -45,6 +65,10 @@ export interface StatusResult {
   message?: string;
   schema?: string[];
   fns?: string[];
+  /**
+   * URI prefixes this node serves, per verb. See `ResourceCapabilities`.
+   */
+  resources?: ResourceCapabilities;
   details?: Record<string, unknown>;
 }
 
