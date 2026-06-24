@@ -904,6 +904,39 @@ async function* mergeStreams<T>(
 }
 
 /**
+ * Derive `ResourceCapabilities` from a rig's per-verb route table.
+ *
+ * For each verb (`read`, `observe`, `receive`): collect the `patterns`
+ * lists of every connection wired into that verb's route, dedupe, and
+ * report under the matching key. Patterns are emitted verbatim —
+ * wildcards (`*`, `**`) are not expanded.
+ *
+ * A verb with no connections (or whose connections declared zero
+ * patterns) is omitted from the result entirely. If all three verbs are
+ * empty, returns `undefined` so the surrounding `StatusResult` omits
+ * the `resources` field rather than serializing `{}`.
+ *
+ * This is the single source of truth for `rig.status().resources` —
+ * downstream nodes are not consulted. The rig advertises exactly what
+ * its `connection(node, patterns)` registrations say it serves.
+ */
+function deriveResourcesFromRoutes(routes: {
+  receive: readonly Connection[];
+  read: readonly Connection[];
+  observe: readonly Connection[];
+}): ResourceCapabilities | undefined {
+  const result: ResourceCapabilities = {};
+  for (const verb of ["read", "observe", "receive"] as const) {
+    const seen = new Set<string>();
+    for (const conn of routes[verb]) {
+      for (const pattern of conn.patterns) seen.add(pattern);
+    }
+    if (seen.size > 0) result[verb] = [...seen];
+  }
+  return Object.keys(result).length > 0 ? result : undefined;
+}
+
+/**
  * Build dispatch from per-op route arrays.
  *
  * Each operation flows through its dedicated route list:
@@ -913,7 +946,9 @@ async function* mergeStreams<T>(
  *   sources is the job of an aggregating client (e.g. memcache+shards),
  *   not the rig.
  * - `observe`: per url, first connection that accepts wins.
- * - `status`: aggregate across unique clients seen on any route.
+ * - `status`: aggregate health/schema/fns across unique clients seen on
+ *   any route. `resources` is derived from the rig's own route table
+ *   (per-verb connection patterns), not from downstream `status()`.
  */
 function createRouteDispatch(
   routes: {
@@ -1005,33 +1040,13 @@ function createRouteDispatch(
       }
       const fns = allFns.size > 0 ? [...allFns] : undefined;
 
-      // Aggregate resources per verb. A node's prefix only counts toward
-      // verb V if that node is wired into the rig's V route table.
-      const inVerb = {
-        read: new Set<ProtocolInterfaceNode>(read.map((c) => c.client)),
-        observe: new Set<ProtocolInterfaceNode>(observe.map((c) => c.client)),
-        receive: new Set<ProtocolInterfaceNode>(receive.map((c) => c.client)),
-      };
-      const mergedResources: ResourceCapabilities = {};
-      for (let i = 0; i < unique.length; i++) {
-        const client = unique[i];
-        const r = results[i].resources;
-        if (!r) continue;
-        for (const verb of ["read", "observe", "receive"] as const) {
-          if (!inVerb[verb].has(client)) continue;
-          const reported = r[verb];
-          if (!reported || reported.length === 0) continue;
-          (mergedResources[verb] ??= []).push(...reported);
-        }
-      }
-      for (const verb of ["read", "observe", "receive"] as const) {
-        if (mergedResources[verb]) {
-          mergedResources[verb] = [...new Set(mergedResources[verb])];
-        }
-      }
-      const resources = Object.keys(mergedResources).length > 0
-        ? mergedResources
-        : undefined;
+      // Derive `resources` from the rig's own route table. The rig already
+      // knows what each connection serves — its `patterns` list — and this
+      // is the authoritative source. Downstream nodes are not consulted
+      // for resources; what the rig advertises is exactly what it has
+      // wired up under each verb. Patterns (including wildcards like `*`
+      // and `**`) are reported verbatim — we do not try to expand them.
+      const resources = deriveResourcesFromRoutes({ receive, read, observe });
 
       const unhealthy = results.find((r) => r.status === "unhealthy");
       if (unhealthy) return { ...unhealthy, schema: [...allSchema], fns, resources };
