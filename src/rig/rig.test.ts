@@ -1,13 +1,17 @@
 /**
- * Tests for the Rig's status() aggregation of ResourceCapabilities.
+ * Tests for the Rig's status() derivation of ResourceCapabilities.
  *
- * Covers:
- *  1. Per-verb aggregation: a node's prefix only counts toward verb V if
- *     that node is wired into the rig's V route.
- *  2. Deduplication within each verb.
- *  3. A node that reports nothing under `resources` doesn't pollute the
- *     result (omitted entirely, not an empty array).
- *  4. If no node reports any `resources`, the rig's status omits the field.
+ * Contract:
+ *  - `status().resources` is derived from the rig's own route table.
+ *    For each verb V in {read, observe, receive}, the result includes
+ *    every `pattern` declared by any `connection(node, patterns)`
+ *    wired into `routes[V]`. Downstream node-reported `resources` are
+ *    ignored — the rig is the authority.
+ *  - Patterns are deduped within each verb.
+ *  - A verb with no wired connections (or no patterns) is omitted.
+ *  - If all three verbs are empty, the `resources` field is omitted
+ *    entirely (not `{}`).
+ *  - Wildcard patterns (`*`, `**`) are reported verbatim — not expanded.
  */
 
 import { assertEquals } from "@std/assert";
@@ -18,6 +22,9 @@ import type { ResourceCapabilities } from "../types/types.ts";
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
+/** A trivial healthy client. Downstream-reported resources are ignored
+ *  by the new aggregator, but we let callers override status anyway so
+ *  the tests can prove that downstream reports do NOT leak through. */
 function makeClient(resources?: ResourceCapabilities) {
   return new RecordingClient({
     status: () => ({
@@ -27,70 +34,102 @@ function makeClient(resources?: ResourceCapabilities) {
   });
 }
 
-// ── status().resources aggregation ───────────────────────────────────────────
+// ── status().resources derivation ────────────────────────────────────────────
 
 Deno.test(
-  "Rig status() - aggregates resources per verb from downstream nodes",
+  "Rig status() - derives resources per verb from route patterns",
   async () => {
-    // Node A: wired into all three verbs, reports resources for all three.
-    const nodeA = makeClient({
-      read: ["store://items/", "store://users/"],
-      observe: ["store://items/"],
-      receive: ["store://items/"],
-    });
-
-    // Node B: wired into receive + read only (not observe), reports for
-    // receive + read (its observe entry should not appear in the rig's
-    // aggregated observe because it's not on the observe route).
-    const nodeB = makeClient({
-      read: ["store://archive/"],
-      receive: ["store://archive/"],
-      observe: ["store://archive/"], // wired into receive/read only — should be dropped
-    });
-
-    const connA = connection(nodeA, ["store://**"]);
-    const connBReceiveRead = connection(nodeB, ["store://**"]);
+    const node = makeClient();
+    const conn = connection(node, ["immutable://open/"]);
 
     const rig = new Rig({
       routes: {
-        receive: [connA, connBReceiveRead],
-        read: [connA, connBReceiveRead],
-        observe: [connA], // nodeB intentionally excluded from observe
+        receive: [conn],
+        read: [conn],
+        observe: [conn],
       },
     });
 
     const s = await rig.status();
+    assertEquals(s.resources, {
+      read: ["immutable://open/"],
+      observe: ["immutable://open/"],
+      receive: ["immutable://open/"],
+    });
+  },
+);
 
-    // read: nodeA contributes store://items/ and store://users/;
-    //       nodeB contributes store://archive/ — all three appear.
+Deno.test(
+  "Rig status() - asymmetric wiring: read-only connection only contributes to read",
+  async () => {
+    const writable = makeClient();
+    const readOnly = makeClient();
+
+    const writeConn = connection(writable, ["mutable://app/"]);
+    const readConn = connection(readOnly, ["cache://hot/"]);
+
+    const rig = new Rig({
+      routes: {
+        receive: [writeConn],
+        read: [writeConn, readConn],
+        observe: [writeConn],
+      },
+    });
+
+    const s = await rig.status();
+    assertEquals((s.resources as ResourceCapabilities).read?.sort(), [
+      "cache://hot/",
+      "mutable://app/",
+    ]);
+    assertEquals(s.resources?.observe, ["mutable://app/"]);
+    assertEquals(s.resources?.receive, ["mutable://app/"]);
+  },
+);
+
+Deno.test(
+  "Rig status() - aggregates multiple patterns per connection, per verb",
+  async () => {
+    // One node serving multiple URI families on all three verbs.
+    const node = makeClient();
+    const conn = connection(node, ["store://items/", "store://users/"]);
+    // Another node only on read, contributing a third family.
+    const archive = makeClient();
+    const archiveRead = connection(archive, ["store://archive/"]);
+
+    const rig = new Rig({
+      routes: {
+        receive: [conn],
+        read: [conn, archiveRead],
+        observe: [conn],
+      },
+    });
+
+    const s = await rig.status();
     assertEquals((s.resources as ResourceCapabilities).read?.sort(), [
       "store://archive/",
       "store://items/",
       "store://users/",
     ]);
-
-    // observe: only nodeA is on the observe route, so only store://items/
-    assertEquals((s.resources as ResourceCapabilities).observe, [
+    assertEquals((s.resources as ResourceCapabilities).observe?.sort(), [
       "store://items/",
+      "store://users/",
     ]);
-
-    // receive: nodeA + nodeB both on receive route, each contributes one prefix
     assertEquals((s.resources as ResourceCapabilities).receive?.sort(), [
-      "store://archive/",
       "store://items/",
+      "store://users/",
     ]);
   },
 );
 
 Deno.test(
-  "Rig status() - deduplicates prefixes within each verb",
+  "Rig status() - deduplicates patterns within a verb across connections",
   async () => {
-    const prefix = "store://shared/";
-    const nodeA = makeClient({ read: [prefix] });
-    const nodeB = makeClient({ read: [prefix] });
+    const a = makeClient();
+    const b = makeClient();
+    const shared = "store://shared/";
 
-    const connA = connection(nodeA, ["store://**"]);
-    const connB = connection(nodeB, ["store://**"]);
+    const connA = connection(a, [shared]);
+    const connB = connection(b, [shared]);
 
     const rig = new Rig({
       routes: {
@@ -101,61 +140,79 @@ Deno.test(
     });
 
     const s = await rig.status();
-    // Both nodes report the same prefix — result must deduplicate.
-    assertEquals((s.resources as ResourceCapabilities).read, [prefix]);
+    assertEquals((s.resources as ResourceCapabilities).read, [shared]);
   },
 );
 
 Deno.test(
-  "Rig status() - node with no resources field does not pollute result",
+  "Rig status() - ignores downstream-reported resources entirely",
   async () => {
-    // nodeA has resources; nodeB has none at all.
-    const nodeA = makeClient({ read: ["store://items/"] });
-    const nodeB = makeClient(/* no resources */);
-
-    const connA = connection(nodeA, ["store://**"]);
-    const connB = connection(nodeB, ["store://**"]);
+    // The downstream node claims to serve URIs the rig never wired up.
+    // The rig must NOT propagate those — its routes are the authority.
+    const lying = makeClient({
+      read: ["bogus://lying/"],
+      observe: ["bogus://lying/"],
+      receive: ["bogus://lying/"],
+    });
+    const conn = connection(lying, ["truth://only/"]);
 
     const rig = new Rig({
       routes: {
-        receive: [connA],
-        read: [connA, connB],
-        observe: [connA],
+        receive: [conn],
+        read: [conn],
+        observe: [conn],
       },
     });
 
     const s = await rig.status();
-    // nodeB must not add an empty array or undefined entry.
-    assertEquals((s.resources as ResourceCapabilities).read, ["store://items/"]);
-    assertEquals(
-      (s.resources as ResourceCapabilities).observe,
-      undefined,
-    );
-    assertEquals(
-      (s.resources as ResourceCapabilities).receive,
-      undefined,
-    );
+    assertEquals(s.resources, {
+      read: ["truth://only/"],
+      observe: ["truth://only/"],
+      receive: ["truth://only/"],
+    });
   },
 );
 
 Deno.test(
-  "Rig status() - omits resources field entirely when no node reports any",
+  "Rig status() - omits a verb whose route has no connections",
   async () => {
-    const nodeA = makeClient(); // no resources
-    const nodeB = makeClient(); // no resources
-    const connA = connection(nodeA, ["store://**"]);
-    const connB = connection(nodeB, ["store://**"]);
+    // observe route is empty — receive + read are wired.
+    const node = makeClient();
+    const conn = connection(node, ["store://items/"]);
 
     const rig = new Rig({
       routes: {
-        receive: [connA],
-        read: [connA, connB],
-        observe: [connA],
+        receive: [conn],
+        read: [conn],
       },
     });
 
     const s = await rig.status();
-    // `resources` must be absent — not `{}`, not an object with empty arrays.
-    assertEquals(s.resources, undefined);
+    assertEquals(s.resources?.read, ["store://items/"]);
+    assertEquals(s.resources?.receive, ["store://items/"]);
+    // observe must be omitted entirely — not an empty array.
+    assertEquals(s.resources?.observe, undefined);
+  },
+);
+
+Deno.test(
+  "Rig status() - reports wildcard patterns verbatim",
+  async () => {
+    const node = makeClient();
+    const conn = connection(node, ["**", "mutable://*/data/**"]);
+
+    const rig = new Rig({
+      routes: {
+        receive: [conn],
+        read: [conn],
+        observe: [conn],
+      },
+    });
+
+    const s = await rig.status();
+    assertEquals((s.resources as ResourceCapabilities).read?.sort(), [
+      "**",
+      "mutable://*/data/**",
+    ]);
   },
 );

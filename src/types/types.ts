@@ -31,11 +31,12 @@ export interface HealthStatus {
 }
 
 /**
- * URI prefixes a node serves, per verb. Rigs aggregate this from
- * downstream nodes (each node self-reports its own). Custom clients
- * may report whatever they choose to expose. Asymmetric mounts (e.g.
- * write-only ingest) report faithfully — a prefix may appear under
- * one verb and not another.
+ * URI prefixes a node serves, per verb. A `Rig` derives this from its
+ * own route table — each `connection(node, patterns)` contributes its
+ * patterns under the verb(s) it's wired into; downstream nodes are not
+ * consulted. Custom (non-Rig) clients may populate this however they
+ * choose. Asymmetric wiring (e.g. a read-only mount) is reported
+ * faithfully — a prefix appears under exactly the verbs it serves.
  *
  * Discovery clients (UIs, agents) use this to find places where they
  * can mount or observe. For example, a chat looks for prefixes that
