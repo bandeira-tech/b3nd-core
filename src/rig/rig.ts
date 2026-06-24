@@ -17,6 +17,7 @@ import type {
   ProgramResult,
   ProtocolInterfaceNode,
   ReceiveResult,
+  ResourceCapabilities,
   StatusResult,
 } from "../types/types.ts";
 import type { RigConfig, RigInfo } from "./types.ts";
@@ -1003,11 +1004,40 @@ function createRouteDispatch(
         if (r.fns) { for (const f of r.fns) allFns.add(f); }
       }
       const fns = allFns.size > 0 ? [...allFns] : undefined;
+
+      // Aggregate resources per verb. A node's prefix only counts toward
+      // verb V if that node is wired into the rig's V route table.
+      const inVerb = {
+        read: new Set<ProtocolInterfaceNode>(read.map((c) => c.client)),
+        observe: new Set<ProtocolInterfaceNode>(observe.map((c) => c.client)),
+        receive: new Set<ProtocolInterfaceNode>(receive.map((c) => c.client)),
+      };
+      const mergedResources: ResourceCapabilities = {};
+      for (let i = 0; i < unique.length; i++) {
+        const client = unique[i];
+        const r = results[i].resources;
+        if (!r) continue;
+        for (const verb of ["read", "observe", "receive"] as const) {
+          if (!inVerb[verb].has(client)) continue;
+          const reported = r[verb];
+          if (!reported || reported.length === 0) continue;
+          (mergedResources[verb] ??= []).push(...reported);
+        }
+      }
+      for (const verb of ["read", "observe", "receive"] as const) {
+        if (mergedResources[verb]) {
+          mergedResources[verb] = [...new Set(mergedResources[verb])];
+        }
+      }
+      const resources = Object.keys(mergedResources).length > 0
+        ? mergedResources
+        : undefined;
+
       const unhealthy = results.find((r) => r.status === "unhealthy");
-      if (unhealthy) return { ...unhealthy, schema: [...allSchema], fns };
+      if (unhealthy) return { ...unhealthy, schema: [...allSchema], fns, resources };
       const degraded = results.find((r) => r.status === "degraded");
-      if (degraded) return { ...degraded, schema: [...allSchema], fns };
-      return { status: "healthy", schema: [...allSchema], fns };
+      if (degraded) return { ...degraded, schema: [...allSchema], fns, resources };
+      return { status: "healthy", schema: [...allSchema], fns, resources };
     },
   };
 }
