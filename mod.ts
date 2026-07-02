@@ -20,7 +20,9 @@ export type {
   ProgramResult,
   ProtocolInterfaceNode,
   ReadFn,
+  ReceiveFn,
   ReceiveResult,
+  ResourceCapabilities,
   StatusResult,
   WriteResult,
 } from "./src/types/types.ts";

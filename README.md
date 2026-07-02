@@ -189,7 +189,7 @@ const stop = network(localRig, [
 
 | Module             | What's in it                                                            |
 | ------------------ | ----------------------------------------------------------------------- |
-| `types`            | `ProtocolInterfaceNode`, `Output`, `Message`, `B3ndError`, `Errors`, …  |
+| `types`            | `ProtocolInterfaceNode`, `Output`, `B3ndError`, `Errors`, …             |
 | `encoding`         | Base64 / hex primitives                                                 |
 | `hash`             | SHA-256                                                                 |
 | `encrypt`          | Ed25519 signing, X25519 encryption, AES-GCM, PBKDF2                     |

@@ -42,7 +42,7 @@
  * const rig = new Rig({
  *   routes: {
  *     receive: [primary, mirror], // broadcast both
- *     read:    [cache, primary],  // try cache first, then primary
+ *     read:    [cache, primary],  // cache wins on match; primary for the rest (first-match-wins)
  *     observe: [obsNarrow],       // narrow namespace, primary only
  *   },
  * });
