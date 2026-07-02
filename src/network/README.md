@@ -135,7 +135,8 @@ a message signed by A is never re-broadcast to A. The inbound
 `network(rig, peers)` feeds peer writes into the rig's receive pipeline.
 
 Sign outbound messages with `Identity.sign()` + `message()` so they carry a
-signer chain. Unsigned content in a bidirectional mesh will loop — the outbound
+signer chain. (`message()` is not in b3nd-core — import it from b3nd-canon:
+`import { message } from "@bandeira-tech/b3nd-canon"`) Unsigned content in a bidirectional mesh will loop — the outbound
 path cannot know the origin without the chain on the wire. For unsigned content,
 use a DAG topology (push-only on one side) or add a rig-level `beforeReceive`
 seen-set hook.

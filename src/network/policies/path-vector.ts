@@ -10,7 +10,9 @@
  *
  * Handles arbitrary-length cycles (A → B → C → A) without any state,
  * because the chain grows with every relay that re-signs. Works "for
- * free" when messages are signed with `Identity.sign()` + `message()`.
+ * free" when messages are signed with `Identity.sign()` + `message()`
+ * (`message()` is not in b3nd-core — import it from b3nd-canon:
+ * `import { message } from "@bandeira-tech/b3nd-canon"`).
  *
  * ## Peer id convention
  *
