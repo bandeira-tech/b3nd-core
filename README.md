@@ -189,7 +189,7 @@ const stop = network(localRig, [
 
 | Module             | What's in it                                                            |
 | ------------------ | ----------------------------------------------------------------------- |
-| `types`            | `ProtocolInterfaceNode`, `Output`, `Message`, `B3ndError`, `Errors`, …  |
+| `types`            | `ProtocolInterfaceNode`, `Output`, `B3ndError`, `Errors`, …             |
 | `encoding`         | Base64 / hex primitives                                                 |
 | `hash`             | SHA-256                                                                 |
 | `encrypt`          | Ed25519 signing, X25519 encryption, AES-GCM, PBKDF2                     |
@@ -210,7 +210,21 @@ import { ... } from "@bandeira-tech/b3nd-core/rig";           // Rig + connectio
 import { ... } from "@bandeira-tech/b3nd-core/identity";      // Identity
 import { ... } from "@bandeira-tech/b3nd-core/network";       // network primitives
 import { ... } from "@bandeira-tech/b3nd-core/client-console"; // console client
+import { RecordingClient } from "@bandeira-tech/b3nd-core/testing"; // PIN test double
 ```
+
+## Testing
+
+`b3nd-core` ships a first-party PIN test double for use in your own tests:
+
+```typescript
+import { RecordingClient } from "@bandeira-tech/b3nd-core/testing";
+import type { RecordedCall, RecordedCallOf, RecordingClientFixtures } from "@bandeira-tech/b3nd-core/testing";
+```
+
+`RecordingClient` records every `receive`, `read`, `observe`, and `status` call
+so you can assert on interactions without a real transport. Use it to test rigs,
+programs, and code handlers in-process.
 
 ## Development
 

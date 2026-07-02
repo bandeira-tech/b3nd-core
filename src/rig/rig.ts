@@ -49,6 +49,9 @@ import { OperationHandleImpl } from "./operation-handle.ts";
  *
  * @example Authenticated send
  * ```typescript
+ * // `message()` is not in b3nd-core — import it from b3nd-canon:
+ * // import { message } from "@bandeira-tech/b3nd-canon";
+ * //
  * // With messageDataHandler registered, the rig decomposes the
  * // envelope into outputs + null-payload deletions for inputs.
  * const id = await Identity.fromSeed("my-secret");

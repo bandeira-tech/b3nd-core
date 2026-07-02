@@ -49,6 +49,9 @@ The rig has two core actions. Everything else is observation.
   from an external source
 
 ```typescript
+// `message()` is not in b3nd-core — import it from b3nd-canon:
+// import { message } from "@bandeira-tech/b3nd-canon";
+//
 // Send a signed envelope. With messageDataHandler registered, the
 // rig decomposes the envelope into its outputs + null-payload
 // deletions for inputs. Without it, send the constituent tuples
