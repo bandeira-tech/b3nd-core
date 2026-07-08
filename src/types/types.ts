@@ -173,102 +173,118 @@ export interface ReceiveResult {
 }
 
 /**
- * ProtocolInterfaceNode — the universal interface implemented by all clients.
+ * ProtocolReceive — the receive capability.
  *
- * Four primitives:
- * - `receive` — all state changes (writes), addressed by **uri**
- * - `read`    — all queries, addressed by **locator**
- * - `observe` — stream of changes, subscribed by **locator**
- * - `status`  — health + capabilities
+ * `receive` is the unified entry point for all state changes. Each
+ * output is `[uri, payload]` where `uri` is the canonical resource
+ * identifier the payload is written under. Clients interpret the
+ * payload per their role (storage clients persist, audit clients
+ * append, forwarders forward). Returns one `ReceiveResult` per output.
  *
- * **URIs vs locators.** A *uri* is the canonical identifier of a
- * resource — used for writes and emitted on observe so listeners learn
- * which resource changed. A *locator* is any addressing string a caller
- * passes to `read`/`observe`: it may be a bare uri, a pattern with
- * wildcards, or a uri decorated with request-time directives. The
- * framework treats locators as opaque — it routes them by string
- * pattern matching and hands them to the executing client verbatim.
- * What grammar (if any) a locator follows is a contract between the
- * caller and the executing client.
- *
- * All B3nd clients (Memory, HTTP, WebSocket, Postgres, IndexedDB, etc.)
- * implement this interface, enabling recursive composition and uniform usage.
+ * The return type is `PromiseLike` (not `Promise`) so implementations
+ * can return richer await-targets — e.g. the Rig returns an
+ * `OperationHandle` that is awaitable AND exposes per-route events.
+ * Plain `Promise<ReceiveResult[]>` still satisfies the contract.
  */
-export interface ProtocolInterfaceNode {
-  /**
-   * Receive a batch of outputs — the unified entry point for all state changes.
-   *
-   * Each output is `[uri, payload]` where `uri` is the canonical
-   * resource identifier the payload is written under. Clients interpret
-   * the payload per their role (storage clients persist, audit clients
-   * append, forwarders forward). Returns one `ReceiveResult` per output.
-   *
-   * The return type is `PromiseLike` (not `Promise`) so implementations
-   * can return richer await-targets — e.g., the Rig returns an
-   * `OperationHandle` that's awaitable AND exposes per-route events.
-   * Plain `Promise<ReceiveResult[]>` still satisfies the contract.
-   */
+export interface ProtocolReceive {
   receive(msgs: Output[]): PromiseLike<ReceiveResult[]>;
+}
 
-  /**
-   * Read a batch of locators.
-   *
-   * Locators are opaque to the framework: their grammar is a contract
-   * between the caller and the executing client. The rig routes each
-   * locator to the first connection whose pattern accepts it (pure
-   * string pattern matching, no normalization).
-   *
-   * **Shape: 1:1 with input.** Returns one `Output<T>` per input
-   * locator, in input order. Each output is `[inputLocator, payload]` —
-   * the first element echoes the caller's locator so results are
-   * addressable positionally or by lookup.
-   *
-   * Payload semantics are entirely the client's concern. What "not
-   * found" looks like, what listing shapes look like, what extension
-   * functions return — all defined by the executing client and agreed
-   * with its callers out-of-band.
-   *
-   * **Errors:** transport / programmer errors throw (network down, no
-   * route accepts, grammar violations the client rejects). Anything
-   * else — "not found", auth refusals, etc. — is encoded in the payload
-   * per the client's convention.
-   */
+/**
+ * ProtocolRead — the read capability.
+ *
+ * Locators are opaque to the framework: their grammar is a contract
+ * between the caller and the executing client. Returns one `Output<T>`
+ * per input locator, in input order — each `[inputLocator, payload]`,
+ * so results are addressable positionally or by lookup.
+ *
+ * Payload semantics are entirely the client's concern. What "not
+ * found" looks like, what listing shapes look like, what extension
+ * functions return — all defined by the executing client and agreed
+ * with its callers out-of-band.
+ *
+ * **Errors:** transport / programmer errors throw (network down, no
+ * route accepts, grammar violations the client rejects). Anything else
+ * — "not found", auth refusals — is encoded in the payload per the
+ * client's convention.
+ */
+export interface ProtocolRead {
   read<T = unknown>(locators: string[]): Promise<Output<T>[]>;
+}
 
-  /**
-   * Observe a batch of locators. Yields INV-style batches of uris that
-   * changed under any subscribed pattern. The observer reads each uri
-   * to learn its current state.
-   *
-   * Locators are matched against emitted uris as segment-globs — pure
-   * string pattern matching, no grammar awareness. Each yield is a
-   * non-empty `readonly string[]` of concrete uris that fired in this
-   * batch. Which of the caller's subscription locators matched is not
-   * surfaced; the caller can re-match locally if it needs that routing,
-   * which keeps the wire (and in-process surface) minimal.
-   *
-   * The `signal` controls lifecycle — abort to stop observing.
-   *
-   * @example
-   * ```ts
-   * const abort = new AbortController();
-   * for await (const uris of client.observe(["mutable://market/**"], abort.signal)) {
-   *   const outputs = await client.read(uris);
-   *   for (const [uri, payload] of outputs) console.log(uri, payload);
-   * }
-   * ```
-   */
+/**
+ * ProtocolObserve — the observe capability.
+ *
+ * Yields INV-style batches of uris that changed under any subscribed
+ * pattern. The observer reads each uri to learn its current state.
+ * Locators are matched against emitted uris as segment-globs — pure
+ * string pattern matching, no grammar awareness. Each yield is a
+ * non-empty `readonly string[]` of concrete uris that fired in this
+ * batch. The `signal` controls lifecycle — abort to stop observing.
+ *
+ * @example
+ * ```ts
+ * const abort = new AbortController();
+ * for await (const uris of client.observe(["mutable://market/**"], abort.signal)) {
+ *   const outputs = await client.read(uris);
+ *   for (const [uri, payload] of outputs) console.log(uri, payload);
+ * }
+ * ```
+ */
+export interface ProtocolObserve {
   observe(
     locators: string[],
     signal: AbortSignal,
   ): AsyncIterable<readonly string[]>;
+}
 
-  /**
-   * Status — health + capabilities.
-   * Clients report health. The rig aggregates and adds schema.
-   */
+/**
+ * NodeStatus — the discoverability contract.
+ *
+ * `status()` is not a fourth capability; it is what makes something a
+ * *node* rather than a bare receiving/reading/observing client. Its
+ * `resources` payload is the standard discovery surface — identical
+ * in-process and over the wire. Every wireable node implements it.
+ *
+ * Clients report health + capabilities; the rig aggregates and adds
+ * schema.
+ */
+export interface NodeStatus {
   status(): Promise<StatusResult>;
 }
+
+/**
+ * A discoverable node that receives. The capability every wireable
+ * `receive:`-route member must satisfy: `receive` + `status`.
+ *
+ * **URIs vs locators.** A *uri* is the canonical identifier of a
+ * resource — used for writes and emitted on observe so listeners learn
+ * which resource changed. A *locator* is any addressing string a
+ * caller passes to `read`/`observe`: a bare uri, a pattern with
+ * wildcards, or a uri decorated with request-time directives. The
+ * framework treats locators as opaque — it routes them by string
+ * pattern matching and hands them to the executing client verbatim.
+ */
+export interface ProtocolReceiveNode extends ProtocolReceive, NodeStatus {}
+
+/** A discoverable node that reads: `read` + `status`. */
+export interface ProtocolReadNode extends ProtocolRead, NodeStatus {}
+
+/** A discoverable node that observes: `observe` + `status`. */
+export interface ProtocolObserveNode extends ProtocolObserve, NodeStatus {}
+
+/**
+ * ProtocolInterfaceNode (PIN) — the full node: all three capabilities
+ * plus discoverability. The canonical interface implemented by clients
+ * that serve every verb (Memory, HTTP, WebSocket, Postgres, IndexedDB,
+ * the Rig itself, …), enabling recursive composition and uniform usage.
+ *
+ * Structurally identical to the pre-split interface — `{ receive, read,
+ * observe, status }` — so it remains a drop-in for every existing
+ * implementer and consumer.
+ */
+export interface ProtocolInterfaceNode
+  extends ProtocolReceive, ProtocolRead, ProtocolObserve, NodeStatus {}
 
 /**
  * Structured error codes for programmatic error handling.
