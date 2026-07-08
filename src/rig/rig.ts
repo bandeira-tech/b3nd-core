@@ -12,10 +12,14 @@
 
 import type {
   CodeHandler,
+  NodeStatus,
   Output,
   Program,
   ProgramResult,
   ProtocolInterfaceNode,
+  ProtocolObserveNode,
+  ProtocolReadNode,
+  ProtocolReceiveNode,
   ReceiveResult,
   ResourceCapabilities,
   StatusResult,
@@ -82,9 +86,9 @@ import { OperationHandleImpl } from "./operation-handle.ts";
  */
 export class Rig {
   // ── Internal state ──
-  private readonly _receiveRoutes: readonly Connection[];
-  private readonly _readRoutes: readonly Connection[];
-  private readonly _observeRoutes: readonly Connection[];
+  private readonly _receiveRoutes: readonly Connection<ProtocolReceiveNode>[];
+  private readonly _readRoutes: readonly Connection<ProtocolReadNode>[];
+  private readonly _observeRoutes: readonly Connection<ProtocolObserveNode>[];
   private readonly _dispatch: ProtocolInterfaceNode;
   private readonly _programs: Record<string, Program> | null;
   private readonly _handlers: Record<string, CodeHandler> | null;
@@ -921,9 +925,9 @@ async function* mergeStreams<T>(
  * its `connection(node, patterns)` registrations say it serves.
  */
 function deriveResourcesFromRoutes(routes: {
-  receive: readonly Connection[];
-  read: readonly Connection[];
-  observe: readonly Connection[];
+  receive: readonly Connection<ProtocolReceiveNode>[];
+  read: readonly Connection<ProtocolReadNode>[];
+  observe: readonly Connection<ProtocolObserveNode>[];
 }): ResourceCapabilities | undefined {
   const result: ResourceCapabilities = {};
   for (const verb of ["read", "observe", "receive"] as const) {
@@ -952,9 +956,9 @@ function deriveResourcesFromRoutes(routes: {
  */
 function createRouteDispatch(
   routes: {
-    receive: readonly Connection[];
-    read: readonly Connection[];
-    observe: readonly Connection[];
+    receive: readonly Connection<ProtocolReceiveNode>[];
+    read: readonly Connection<ProtocolReadNode>[];
+    observe: readonly Connection<ProtocolObserveNode>[];
   },
 ): ProtocolInterfaceNode {
   const { receive, read, observe } = routes;
@@ -1006,7 +1010,7 @@ function createRouteDispatch(
       // Group urls by the first connection that accepts them so each
       // connection sees the subset it owns. No aggregation across
       // connections — that is the aggregating client's job.
-      const groups = new Map<Connection, string[]>();
+      const groups = new Map<Connection<ProtocolObserveNode>, string[]>();
       for (const url of urls) {
         const conn = observe.find((c) => c.accepts(url));
         if (!conn) continue;
@@ -1021,8 +1025,8 @@ function createRouteDispatch(
     },
 
     async status(): Promise<StatusResult> {
-      const seen = new Set<ProtocolInterfaceNode>();
-      const unique: ProtocolInterfaceNode[] = [];
+      const seen = new Set<NodeStatus>();
+      const unique: NodeStatus[] = [];
       for (const list of [receive, read, observe]) {
         for (const s of list) {
           if (!seen.has(s.client)) {
