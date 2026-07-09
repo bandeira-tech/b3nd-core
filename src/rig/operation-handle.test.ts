@@ -13,9 +13,13 @@
 import { assertEquals, assertNotEquals, assertRejects } from "@std/assert";
 import { Rig } from "./rig.ts";
 import { connection } from "./connection.ts";
-import { FunctionalClient } from "../functional-client/functional-client.ts";
 import { RecordingClient } from "../testing/recording-client.ts";
-import type { Output, Program, ReceiveResult } from "../types/types.ts";
+import type {
+  Output,
+  Program,
+  ProtocolReceiveNode,
+  ReceiveResult,
+} from "../types/types.ts";
 
 // These tests verify OperationHandle event emissions only — they never
 // assert anything about persisted state, so a recording-fake route
@@ -135,9 +139,13 @@ Deno.test("OperationHandle - fires route:success per (emission, connection)", as
 });
 
 Deno.test("OperationHandle - fires route:error when a connection rejects", async () => {
-  const failing = new FunctionalClient({
+  // A genuine receive-only node — no read/observe stubs. Post-split, a
+  // node serving one verb implements just that verb + status(); it wires
+  // into `receive:` without a FunctionalClient wrapper to fill the gaps.
+  const failing: ProtocolReceiveNode = {
     receive: () => Promise.resolve([{ accepted: false, error: "disk full" }]),
-  });
+    status: () => Promise.resolve({ status: "healthy" }),
+  };
   const _route23 = connection(failing, ["mutable://**"], { id: "broken" });
   const rig = new Rig({
     routes: {
@@ -479,9 +487,10 @@ Deno.test("onError hook - fires for handle error (handler throw)", async () => {
 });
 
 Deno.test("onError hook - fires for route error (connection rejects)", async () => {
-  const failing = new FunctionalClient({
+  const failing: ProtocolReceiveNode = {
     receive: () => Promise.resolve([{ accepted: false, error: "disk full" }]),
-  });
+    status: () => Promise.resolve({ status: "healthy" }),
+  };
   const c = connection(failing, ["**"], { id: "broken" });
   const seen: { phase: string; connectionId?: string; error: string }[] = [];
   const rig = new Rig({

@@ -68,13 +68,21 @@ export interface ConnectionOptions {
   id?: string;
 }
 
-/** A connection: a client wrapped with a URI pattern list. */
-export interface Connection {
+/**
+ * A connection: a client wrapped with a URI pattern list.
+ *
+ * Generic over the client's node type. Defaults to
+ * `ProtocolInterfaceNode` so bare `Connection` keeps meaning "full
+ * node", but a narrower client (e.g. a receive-only node) is preserved
+ * as `Connection<{ receive; status }>` — which the rig's per-verb route
+ * slots use to reject mis-wiring at compile time.
+ */
+export interface Connection<T = ProtocolInterfaceNode> {
   /** Stable identifier (provided or auto-generated). */
   readonly id: string;
 
   /** The underlying client. */
-  readonly client: ProtocolInterfaceNode;
+  readonly client: T;
 
   /**
    * The raw patterns — serializable for wire protocols.
@@ -111,11 +119,11 @@ let _autoIdCounter = 0;
  * best-effort: the remote node may or may not honor the patterns,
  * but the local rig always filters based on them.
  */
-export function connection(
-  client: ProtocolInterfaceNode,
+export function connection<T = ProtocolInterfaceNode>(
+  client: T,
   patterns: string[],
   options?: ConnectionOptions,
-): Connection {
+): Connection<T> {
   const matchers = patterns.map(compilePattern);
   const frozenPatterns = Object.freeze([...patterns]) as readonly string[];
   const id = options?.id ?? `conn-${_autoIdCounter++}`;

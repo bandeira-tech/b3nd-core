@@ -7,6 +7,9 @@ import type {
   CodeHandler,
   Program,
   ProtocolInterfaceNode,
+  ProtocolObserveNode,
+  ProtocolReadNode,
+  ProtocolReceiveNode,
 } from "../types/types.ts";
 import type { HooksConfig } from "./hooks.ts";
 import type { EventHandler, RigEventName } from "./events.ts";
@@ -38,9 +41,9 @@ export type { ProtocolInterfaceNode };
  * for a different op means a separate `connection(...)` call.
  */
 export interface RigRoutes {
-  receive?: Connection[];
-  read?: Connection[];
-  observe?: Connection[];
+  receive?: Connection<ProtocolReceiveNode>[];
+  read?: Connection<ProtocolReadNode>[];
+  observe?: Connection<ProtocolObserveNode>[];
 }
 
 /**
