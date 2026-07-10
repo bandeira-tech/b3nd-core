@@ -216,3 +216,49 @@ Deno.test(
     ]);
   },
 );
+
+// ── observe finalization (observe-finalize gap) ──────────────────────────────
+
+Deno.test(
+  "Rig observe - breaking the loop without aborting finalizes promptly",
+  async () => {
+    // A source that yields one batch, then blocks until its signal aborts.
+    const blockingSource = (_urls: string[], signal: AbortSignal) =>
+      (async function* () {
+        yield ["mutable://x/1"] as readonly string[];
+        await new Promise<void>((resolve) => {
+          if (signal.aborted) return resolve();
+          signal.addEventListener("abort", () => resolve(), { once: true });
+        });
+      })();
+
+    const node = new RecordingClient({ observe: blockingSource });
+    const conn = connection(node, ["mutable://x/**"]);
+    const rig = new Rig({ routes: { observe: [conn] } });
+
+    // Deliberately never aborted: the consumer leaves by `break`, and
+    // finalization must still tear the source stream down.
+    const ac = new AbortController();
+    let events = 0;
+    const drain = (async () => {
+      for await (const _batch of rig.observe(["mutable://x/1"], ac.signal)) {
+        events++;
+        break;
+      }
+    })();
+
+    let timer = 0;
+    const timeout = new Promise<"timeout">((resolve) => {
+      timer = setTimeout(() => resolve("timeout"), 1000);
+    });
+    const winner = await Promise.race([
+      drain.then(() => "done" as const),
+      timeout,
+    ]);
+    clearTimeout(timer);
+    ac.abort(); // unblock the source if the loop actually hung
+    await drain.catch(() => {});
+    assertEquals(events, 1); // the source really fired before we broke
+    assertEquals(winner, "done");
+  },
+);

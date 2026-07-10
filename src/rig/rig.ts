@@ -860,14 +860,23 @@ export class Rig {
 // ── Init helpers ──
 
 /**
- * Merge a set of `AsyncIterable`s into one stream. Aborts when `signal`
- * fires; per-stream errors are swallowed (one broken peer should not
- * tear down the merged stream).
+ * Merge a set of `AsyncIterable`s into one stream. `controller.signal`
+ * drives the source streams; per-stream errors are swallowed (one
+ * broken peer should not tear down the merged stream).
+ *
+ * On finalization — the consumer `break`s / `return`s / `throw`s out of
+ * the merged loop — `controller.abort()` fires in the `finally` **before**
+ * awaiting the forwarders. The sources listen on `controller.signal`, so
+ * aborting is what lets them end; without it the forwarders block on
+ * sources that only stop on abort and finalization hangs forever
+ * (b3nd-icps gap: observe-finalize). Callers therefore hand `mergeStreams`
+ * an *internal* controller they own, relaying the public signal into it.
  */
 async function* mergeStreams<T>(
   streams: AsyncIterable<T>[],
-  signal: AbortSignal,
+  controller: AbortController,
 ): AsyncIterable<T> {
+  const signal = controller.signal;
   if (streams.length === 0) return;
   const queue: T[] = [];
   let wake: (() => void) | null = null;
@@ -906,6 +915,10 @@ async function* mergeStreams<T>(
     }
   } finally {
     signal.removeEventListener("abort", onAbort);
+    // Cancel the sources so their forwarders can end. On a plain abort
+    // this is a no-op (already aborted); on a consumer `break`/`return`
+    // it is what unblocks forwarders whose sources only stop on abort.
+    controller.abort();
     await Promise.allSettled(forwarders);
   }
 }
@@ -1021,10 +1034,23 @@ function createRouteDispatch(
         arr.push(url);
         groups.set(conn, arr);
       }
-      const streams = [...groups.entries()].map(([c, us]) =>
-        c.client.observe(us, signal)
-      );
-      yield* mergeStreams(streams, signal);
+      // Internal controller: the sources observe THIS signal, not the
+      // caller's directly, so `mergeStreams` can abort it on finalization
+      // and tear the sources down even when the caller never aborts
+      // (observe-finalize). The caller's signal is relayed in.
+      const internal = new AbortController();
+      const relay = () => internal.abort();
+      if (signal.aborted) internal.abort();
+      else signal.addEventListener("abort", relay, { once: true });
+      try {
+        const streams = [...groups.entries()].map(([c, us]) =>
+          c.client.observe(us, internal.signal)
+        );
+        yield* mergeStreams(streams, internal);
+      } finally {
+        signal.removeEventListener("abort", relay);
+        internal.abort();
+      }
     },
 
     async status(): Promise<StatusResult> {
@@ -1056,9 +1082,13 @@ function createRouteDispatch(
       const resources = deriveResourcesFromRoutes({ receive, read, observe });
 
       const unhealthy = results.find((r) => r.status === "unhealthy");
-      if (unhealthy) return { ...unhealthy, schema: [...allSchema], fns, resources };
+      if (unhealthy) {
+        return { ...unhealthy, schema: [...allSchema], fns, resources };
+      }
       const degraded = results.find((r) => r.status === "degraded");
-      if (degraded) return { ...degraded, schema: [...allSchema], fns, resources };
+      if (degraded) {
+        return { ...degraded, schema: [...allSchema], fns, resources };
+      }
       return { status: "healthy", schema: [...allSchema], fns, resources };
     },
   };
