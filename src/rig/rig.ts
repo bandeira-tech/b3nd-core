@@ -948,10 +948,10 @@ function deriveResourcesFromRoutes(routes: {
  *
  * Each operation flows through its dedicated route list:
  * - `receive`: broadcast to ALL matching connections in the receive route.
- * - `read`: per url, first connection that accepts the routing key gets
- *   the request — sequential, no aggregation. Aggregation across
- *   sources is the job of an aggregating client (e.g. memcache+shards),
- *   not the rig.
+ * - `read`: each url goes to the first connection that accepts it;
+ *   urls are grouped by connection and dispatched one batch per
+ *   connection. Aggregation across sources is the job of an aggregating
+ *   client (e.g. memcache+shards), not the rig.
  * - `observe`: per url, first connection that accepts wins.
  * - `status`: aggregate health/schema/fns across unique clients seen on
  *   any route. `resources` is derived from the rig's own route table
@@ -990,13 +990,6 @@ function createRouteDispatch(
     },
 
     async read<T = unknown>(urls: string[]): Promise<Output<T>[]> {
-      // 1:1 with input. Group urls by their accepting connection — first
-      // connection whose patterns accept wins — and issue ONE batched
-      // `read` per connection. Batches stay batched: a connection serving
-      // K of the urls sees a single K-url call, not K single-url calls, so
-      // batch-aware clients (multi-key lookups, listing grammars, wire
-      // round-trip batching) receive the batch intact. Each url's original
-      // index rides along so results scatter back into the right slot.
       const groups = new Map<
         Connection<ProtocolReadNode>,
         { url: string; i: number }[]
@@ -1004,7 +997,6 @@ function createRouteDispatch(
       urls.forEach((url, i) => {
         const conn = read.find((s) => s.accepts(url));
         if (!conn) {
-          // Programmer error — this rig isn't configured for this url.
           throw new Error(`No read route accepts ${url}`);
         }
         const arr = groups.get(conn) ?? [];
@@ -1014,8 +1006,6 @@ function createRouteDispatch(
 
       const out: Output<T>[] = new Array(urls.length);
       await Promise.all([...groups.entries()].map(async ([conn, entries]) => {
-        // Results come back in the group's input order per the 1:1
-        // ProtocolRead contract; map each back to its original index.
         const results = await conn.client.read<T>(entries.map((e) => e.url));
         entries.forEach((e, k) => {
           out[e.i] = results[k];

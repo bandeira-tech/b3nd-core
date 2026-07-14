@@ -217,12 +217,7 @@ Deno.test(
   },
 );
 
-// ── read() dispatch: batches stay batched ─────────────────────────────────────
-//
-// Contract: the rig groups a read batch by accepting connection and issues
-// ONE `read` call per connection with all the urls that route to it — never
-// one call per url. Results stay 1:1 with input order. Routing is unchanged:
-// each url goes to the first connection whose patterns accept it.
+// ── read() dispatch ───────────────────────────────────────────────────────────
 
 Deno.test(
   "Rig read() - urls sharing a connection dispatch as a single batched call",
@@ -235,13 +230,11 @@ Deno.test(
 
     const out = await rig.read(["store://items/a", "store://items/b"]);
 
-    // One read call carrying BOTH urls — not two single-url calls.
     assertEquals(node.callsOf("read").length, 1);
     assertEquals(node.callsOf("read")[0].urls, [
       "store://items/a",
       "store://items/b",
     ]);
-    // Results 1:1 with input.
     assertEquals(out, [
       ["store://items/a", { got: "store://items/a" }],
       ["store://items/b", { got: "store://items/b" }],
@@ -288,7 +281,6 @@ Deno.test(
     const connB = connection(nodeB, ["store://b/**"]);
     const rig = new Rig({ routes: { read: [connA, connB] } });
 
-    // a, b, a2 interleaved: connA sees ["a/1","a/2"] in one call, order kept.
     const out = await rig.read([
       "store://a/1",
       "store://b/1",
