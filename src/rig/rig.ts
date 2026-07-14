@@ -990,18 +990,36 @@ function createRouteDispatch(
     },
 
     async read<T = unknown>(urls: string[]): Promise<Output<T>[]> {
-      // 1:1 with input. Each url is routed to its accepting connection;
-      // we ask that connection for that single url and place the
-      // resulting Output<T> in the matching slot.
-      const out: Output<T>[] = new Array(urls.length);
-      await Promise.all(urls.map(async (url, i) => {
+      // 1:1 with input. Group urls by their accepting connection — first
+      // connection whose patterns accept wins — and issue ONE batched
+      // `read` per connection. Batches stay batched: a connection serving
+      // K of the urls sees a single K-url call, not K single-url calls, so
+      // batch-aware clients (multi-key lookups, listing grammars, wire
+      // round-trip batching) receive the batch intact. Each url's original
+      // index rides along so results scatter back into the right slot.
+      const groups = new Map<
+        Connection<ProtocolReadNode>,
+        { url: string; i: number }[]
+      >();
+      urls.forEach((url, i) => {
         const conn = read.find((s) => s.accepts(url));
         if (!conn) {
           // Programmer error — this rig isn't configured for this url.
           throw new Error(`No read route accepts ${url}`);
         }
-        const [r] = await conn.client.read<T>([url]);
-        out[i] = r;
+        const arr = groups.get(conn) ?? [];
+        arr.push({ url, i });
+        groups.set(conn, arr);
+      });
+
+      const out: Output<T>[] = new Array(urls.length);
+      await Promise.all([...groups.entries()].map(async ([conn, entries]) => {
+        // Results come back in the group's input order per the 1:1
+        // ProtocolRead contract; map each back to its original index.
+        const results = await conn.client.read<T>(entries.map((e) => e.url));
+        entries.forEach((e, k) => {
+          out[e.i] = results[k];
+        });
       }));
       return out;
     },
