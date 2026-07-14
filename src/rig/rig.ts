@@ -948,10 +948,10 @@ function deriveResourcesFromRoutes(routes: {
  *
  * Each operation flows through its dedicated route list:
  * - `receive`: broadcast to ALL matching connections in the receive route.
- * - `read`: per url, first connection that accepts the routing key gets
- *   the request — sequential, no aggregation. Aggregation across
- *   sources is the job of an aggregating client (e.g. memcache+shards),
- *   not the rig.
+ * - `read`: each url goes to the first connection that accepts it;
+ *   urls are grouped by connection and dispatched one batch per
+ *   connection. Aggregation across sources is the job of an aggregating
+ *   client (e.g. memcache+shards), not the rig.
  * - `observe`: per url, first connection that accepts wins.
  * - `status`: aggregate health/schema/fns across unique clients seen on
  *   any route. `resources` is derived from the rig's own route table
@@ -990,18 +990,26 @@ function createRouteDispatch(
     },
 
     async read<T = unknown>(urls: string[]): Promise<Output<T>[]> {
-      // 1:1 with input. Each url is routed to its accepting connection;
-      // we ask that connection for that single url and place the
-      // resulting Output<T> in the matching slot.
-      const out: Output<T>[] = new Array(urls.length);
-      await Promise.all(urls.map(async (url, i) => {
+      const groups = new Map<
+        Connection<ProtocolReadNode>,
+        { url: string; i: number }[]
+      >();
+      urls.forEach((url, i) => {
         const conn = read.find((s) => s.accepts(url));
         if (!conn) {
-          // Programmer error — this rig isn't configured for this url.
           throw new Error(`No read route accepts ${url}`);
         }
-        const [r] = await conn.client.read<T>([url]);
-        out[i] = r;
+        const arr = groups.get(conn) ?? [];
+        arr.push({ url, i });
+        groups.set(conn, arr);
+      });
+
+      const out: Output<T>[] = new Array(urls.length);
+      await Promise.all([...groups.entries()].map(async ([conn, entries]) => {
+        const results = await conn.client.read<T>(entries.map((e) => e.url));
+        entries.forEach((e, k) => {
+          out[e.i] = results[k];
+        });
       }));
       return out;
     },

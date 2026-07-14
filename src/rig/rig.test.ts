@@ -14,11 +14,11 @@
  *  - Wildcard patterns (`*`, `**`) are reported verbatim — not expanded.
  */
 
-import { assertEquals } from "@std/assert";
+import { assertEquals, assertRejects } from "@std/assert";
 import { Rig } from "./rig.ts";
 import { connection } from "./connection.ts";
 import { RecordingClient } from "../testing/recording-client.ts";
-import type { ResourceCapabilities } from "../types/types.ts";
+import type { Output, ResourceCapabilities } from "../types/types.ts";
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
@@ -214,5 +214,100 @@ Deno.test(
       "**",
       "mutable://*/data/**",
     ]);
+  },
+);
+
+// ── read() dispatch ───────────────────────────────────────────────────────────
+
+Deno.test(
+  "Rig read() - urls sharing a connection dispatch as a single batched call",
+  async () => {
+    const node = new RecordingClient({
+      read: (urls) => urls.map((u): Output => [u, { got: u }]),
+    });
+    const conn = connection(node, ["store://items/**"]);
+    const rig = new Rig({ routes: { read: [conn] } });
+
+    const out = await rig.read(["store://items/a", "store://items/b"]);
+
+    assertEquals(node.callsOf("read").length, 1);
+    assertEquals(node.callsOf("read")[0].urls, [
+      "store://items/a",
+      "store://items/b",
+    ]);
+    assertEquals(out, [
+      ["store://items/a", { got: "store://items/a" }],
+      ["store://items/b", { got: "store://items/b" }],
+    ]);
+  },
+);
+
+Deno.test(
+  "Rig read() - urls on different connections each get one call, correct slots",
+  async () => {
+    const nodeA = new RecordingClient({
+      read: (urls) => urls.map((u): Output => [u, "A"]),
+    });
+    const nodeB = new RecordingClient({
+      read: (urls) => urls.map((u): Output => [u, "B"]),
+    });
+    const connA = connection(nodeA, ["store://a/**"]);
+    const connB = connection(nodeB, ["store://b/**"]);
+    const rig = new Rig({ routes: { read: [connA, connB] } });
+
+    const out = await rig.read(["store://a/1", "store://b/1"]);
+
+    assertEquals(nodeA.callsOf("read").length, 1);
+    assertEquals(nodeA.callsOf("read")[0].urls, ["store://a/1"]);
+    assertEquals(nodeB.callsOf("read").length, 1);
+    assertEquals(nodeB.callsOf("read")[0].urls, ["store://b/1"]);
+    assertEquals(out, [
+      ["store://a/1", "A"],
+      ["store://b/1", "B"],
+    ]);
+  },
+);
+
+Deno.test(
+  "Rig read() - interleaved batch preserves input order across connections",
+  async () => {
+    const nodeA = new RecordingClient({
+      read: (urls) => urls.map((u): Output => [u, "A"]),
+    });
+    const nodeB = new RecordingClient({
+      read: (urls) => urls.map((u): Output => [u, "B"]),
+    });
+    const connA = connection(nodeA, ["store://a/**"]);
+    const connB = connection(nodeB, ["store://b/**"]);
+    const rig = new Rig({ routes: { read: [connA, connB] } });
+
+    const out = await rig.read([
+      "store://a/1",
+      "store://b/1",
+      "store://a/2",
+    ]);
+
+    assertEquals(nodeA.callsOf("read")[0].urls, ["store://a/1", "store://a/2"]);
+    assertEquals(nodeB.callsOf("read")[0].urls, ["store://b/1"]);
+    assertEquals(out, [
+      ["store://a/1", "A"],
+      ["store://b/1", "B"],
+      ["store://a/2", "A"],
+    ]);
+  },
+);
+
+Deno.test(
+  "Rig read() - an unrouted url throws for the whole batch",
+  async () => {
+    const node = new RecordingClient();
+    const conn = connection(node, ["store://items/**"]);
+    const rig = new Rig({ routes: { read: [conn] } });
+
+    await assertRejects(
+      () => rig.read(["store://items/a", "elsewhere://x"]),
+      Error,
+      "No read route accepts elsewhere://x",
+    );
   },
 );
