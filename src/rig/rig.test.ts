@@ -311,3 +311,72 @@ Deno.test(
     );
   },
 );
+
+// ── receive() dispatch ─────────────────────────────────────────────────────
+
+Deno.test(
+  "Rig client.receive() - messages sharing a connection dispatch as a single batched call",
+  async () => {
+    const node = new RecordingClient();
+    const conn = connection(node, ["store://items/**"]);
+    const rig = new Rig({ routes: { receive: [conn] } });
+
+    const msgs: Output[] = [
+      ["store://items/a", { v: 1 }],
+      ["store://items/b", { v: 2 }],
+    ];
+    const out = await rig.client.receive(msgs);
+
+    assertEquals(node.callsOf("receive").length, 1);
+    assertEquals(node.callsOf("receive")[0].msgs, msgs);
+    assertEquals(out, [{ accepted: true }, { accepted: true }]);
+  },
+);
+
+Deno.test(
+  "Rig receive() pipeline - a bulk receive dispatches one batched call per connection, not one per message",
+  async () => {
+    const node = new RecordingClient();
+    const conn = connection(node, ["store://items/**"]);
+    const rig = new Rig({ routes: { receive: [conn], read: [conn] } });
+
+    const msgs: Output[] = Array.from(
+      { length: 60 },
+      (_, i): Output => [`store://items/${i}`, { i }],
+    );
+    const results = await rig.receiveOrThrow(msgs);
+
+    assertEquals(results.length, 60);
+    assertEquals(results.every((r) => r.accepted), true);
+    // One batched downstream call for all 60 messages — not 60.
+    assertEquals(node.callsOf("receive").length, 1);
+    assertEquals(node.callsOf("receive")[0].msgs.length, 60);
+  },
+);
+
+Deno.test(
+  "Rig receive() pipeline - broadcasts a batched call per matching connection",
+  async () => {
+    const primary = new RecordingClient();
+    const mirror = new RecordingClient();
+    const primaryConn = connection(primary, ["mutable://**"], {
+      id: "primary",
+    });
+    const mirrorConn = connection(mirror, ["mutable://**"], { id: "mirror" });
+    const rig = new Rig({
+      routes: { receive: [primaryConn, mirrorConn], read: [primaryConn] },
+    });
+
+    const msgs: Output[] = [
+      ["mutable://open/a", { v: 1 }],
+      ["mutable://open/b", { v: 2 }],
+    ];
+    const results = await rig.receiveOrThrow(msgs);
+
+    assertEquals(results.length, 2);
+    assertEquals(primary.callsOf("receive").length, 1);
+    assertEquals(primary.callsOf("receive")[0].msgs.length, 2);
+    assertEquals(mirror.callsOf("receive").length, 1);
+    assertEquals(mirror.callsOf("receive")[0].msgs.length, 2);
+  },
+);

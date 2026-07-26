@@ -323,6 +323,7 @@ export class Rig {
 
       const results: ReceiveResult[] = [];
       const broadcastPromises: Promise<void>[] = [];
+      const dispatchEntries: { emission: Output; input: Output }[] = [];
 
       for (let i = 0; i < finalOuts.length; i++) {
         const out = finalOuts[i];
@@ -450,13 +451,20 @@ export class Rig {
           ts: Date.now(),
         });
 
-        // Schedule per-route dispatch — fire-and-forget for the pipeline.
-        broadcastPromises.push(
-          this._dispatchRouteAware(emissions, handle, out),
-        );
+        // Queue this tuple's emissions for one batched dispatch call
+        // covering the whole receive()/send() rather than one route
+        // call per tuple.
+        for (const emission of emissions) {
+          dispatchEntries.push({ emission, input: out });
+        }
 
         await this._runAfterFor(direction, out, payload, result);
       }
+
+      // Dispatch every queued emission — grouped per connection so
+      // each connection sees one batched call instead of one per
+      // tuple. Fire-and-forget for the pipeline-ack below.
+      broadcastPromises.push(this._dispatchRouteAware(dispatchEntries, handle));
 
       // Resolve pipeline-ack. Caller's `await op` returns now.
       handle._pipelineDone(results);
@@ -499,106 +507,122 @@ export class Rig {
   }
 
   /**
-   * Per-emission, per-connection dispatch with route events.
+   * Route-aware dispatch for every emission queued by this send()/
+   * receive() call, batched per connection.
    *
-   * For each emission: find every connection in `routes.receive` that
-   * accepts the URI, dispatch the emission to each independently, emit
-   * `route:success` / `route:error` per (emission, connection). Once
-   * all routes for an emission settle, fire reactions if any route
-   * accepted. Reactions' returned tuples spawn a fresh `rig.send`
-   * operation (independent of this one).
+   * For each entry: find every connection in `routes.receive` that
+   * accepts the URI. Entries are then grouped by connection so each
+   * connection gets ONE batched `receive()` call covering every
+   * emission it matched — not one call per emission — so a bulk
+   * receive of many outputs doesn't fan out into as many downstream
+   * calls. `route:success` / `route:error` still fire per (emission,
+   * connection). Once all routes for an emission settle, fire
+   * reactions if any route accepted. Reactions' returned tuples spawn
+   * a fresh `rig.send` operation (independent of this one).
    *
-   * `input` is the original tuple that drove this dispatch — passed
-   * through so the `onError` hook can correlate route failures back
+   * Each entry carries the original input tuple that produced its
+   * emission, so the `onError` hook can correlate route failures back
    * to the input that triggered them.
    */
   private async _dispatchRouteAware(
-    emissions: Output[],
+    entries: { emission: Output; input: Output }[],
     handle: OperationHandleImpl,
-    input: Output,
   ): Promise<void> {
-    if (emissions.length === 0) return;
-    const reactionPromises: Promise<void>[] = [];
+    if (entries.length === 0) return;
 
-    for (const emission of emissions) {
-      const [uri] = emission;
-      const matching = this._receiveRoutes.filter((c) => c.accepts(uri));
+    const matchesByEntry = entries.map((e) =>
+      this._receiveRoutes.filter((c) => c.accepts(e.emission[0]))
+    );
 
-      if (matching.length === 0) {
-        const error = `No connection accepts receive for ${uri}`;
-        handle._emit("route:error", { emission, connectionId: "", error });
+    const groups = new Map<
+      Connection<ProtocolReceiveNode>,
+      { emission: Output; input: Output; i: number }[]
+    >();
+    matchesByEntry.forEach((conns, i) => {
+      for (const conn of conns) {
+        const arr = groups.get(conn) ?? [];
+        arr.push({ ...entries[i], i });
+        groups.set(conn, arr);
+      }
+    });
+
+    const accepted: boolean[][] = entries.map(() => []);
+
+    await Promise.all([...groups.entries()].map(async ([conn, bucket]) => {
+      let results: ReceiveResult[];
+      try {
+        results = await conn.client.receive(bucket.map((b) => b.emission));
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        await Promise.all(bucket.map(async ({ emission, input, i }) => {
+          handle._emit("route:error", {
+            emission,
+            connectionId: conn.id,
+            error: message,
+          });
+          await runOnError(this._hooks.onError, {
+            phase: "route",
+            input,
+            emission,
+            connectionId: conn.id,
+            error: message,
+            cause: err,
+          });
+          accepted[i].push(false);
+        }));
+        return;
+      }
+
+      await Promise.all(bucket.map(async ({ emission, input, i }, k) => {
+        const r = results[k];
+        if (r.accepted) {
+          handle._emit("route:success", { emission, connectionId: conn.id });
+          accepted[i].push(true);
+          return;
+        }
+        handle._emit("route:error", {
+          emission,
+          connectionId: conn.id,
+          error: r.error,
+          errorDetail: r.errorDetail,
+        });
         await runOnError(this._hooks.onError, {
           phase: "route",
           input,
           emission,
-          connectionId: "",
-          error,
+          connectionId: conn.id,
+          error: r.error ?? "route rejected",
+          errorDetail: r.errorDetail,
         });
-        continue;
-      }
+        accepted[i].push(false);
+      }));
+    }));
 
-      const perConnection: PromiseLike<boolean>[] = matching.map((conn) =>
-        conn.client.receive([emission]).then(
-          async (results) => {
-            const r = results[0];
-            if (r.accepted) {
-              handle._emit("route:success", {
-                emission,
-                connectionId: conn.id,
-              });
-              return true;
-            }
-            handle._emit("route:error", {
-              emission,
-              connectionId: conn.id,
-              error: r.error,
-              errorDetail: r.errorDetail,
-            });
-            await runOnError(this._hooks.onError, {
-              phase: "route",
-              input,
-              emission,
-              connectionId: conn.id,
-              error: r.error ?? "route rejected",
-              errorDetail: r.errorDetail,
-            });
-            return false;
-          },
-          async (err) => {
-            const message = err instanceof Error ? err.message : String(err);
-            handle._emit("route:error", {
-              emission,
-              connectionId: conn.id,
-              error: message,
-            });
-            await runOnError(this._hooks.onError, {
-              phase: "route",
-              input,
-              emission,
-              connectionId: conn.id,
-              error: message,
-              cause: err,
-            });
-            return false;
-          },
+    await Promise.all(entries.map(async ({ emission, input }, i) => {
+      if (matchesByEntry[i].length > 0) return;
+      const error = `No connection accepts receive for ${emission[0]}`;
+      handle._emit("route:error", { emission, connectionId: "", error });
+      await runOnError(this._hooks.onError, {
+        phase: "route",
+        input,
+        emission,
+        connectionId: "",
+        error,
+      });
+    }));
+
+    // Once all routes for an emission settle, fire reactions (only if
+    // at least one route accepted).
+    await Promise.all(
+      entries.map(({ emission, input }, i) =>
+        this._fireReactionsForEmission(
+          emission,
+          accepted[i].some((a) => a),
+          handle,
+          input,
         )
-      );
-
-      // Once all routes for this emission settle, fire reactions
-      // (only if at least one route accepted).
-      reactionPromises.push(
-        Promise.all(perConnection).then((flags) =>
-          this._fireReactionsForEmission(
-            emission,
-            flags.some((a) => a),
-            handle,
-            input,
-          )
-        ),
-      );
-    }
-
-    await Promise.all(reactionPromises);
+      ),
+    );
   }
 
   /**
@@ -968,25 +992,44 @@ function createRouteDispatch(
 
   return {
     async receive(msgs: Output[]): Promise<ReceiveResult[]> {
-      const results: ReceiveResult[] = [];
-      for (const msg of msgs) {
-        const [uri] = msg;
-        const matching = receive.filter((s) => s.accepts(uri));
-        if (matching.length === 0) {
-          results.push({
+      // Broadcast to every matching receive-route connection, but group
+      // by connection so each connection sees one batched call instead
+      // of one call per message — mirrors the `read` grouping below.
+      const matchesByMsg = msgs.map(([uri]) =>
+        receive.filter((s) => s.accepts(uri))
+      );
+
+      const groups = new Map<
+        Connection<ProtocolReceiveNode>,
+        { msg: Output; i: number }[]
+      >();
+      matchesByMsg.forEach((conns, i) => {
+        for (const conn of conns) {
+          const arr = groups.get(conn) ?? [];
+          arr.push({ msg: msgs[i], i });
+          groups.set(conn, arr);
+        }
+      });
+
+      const perMsgResults: ReceiveResult[][] = msgs.map(() => []);
+      await Promise.all([...groups.entries()].map(async ([conn, entries]) => {
+        const results = await conn.client.receive(entries.map((e) => e.msg));
+        entries.forEach((e, k) => {
+          perMsgResults[e.i].push(results[k]);
+        });
+      }));
+
+      return msgs.map(([uri], i) => {
+        if (matchesByMsg[i].length === 0) {
+          return {
             accepted: false,
             error: `No receive route accepts ${uri}`,
-          });
-          continue;
+          };
         }
-        // Broadcast to every matching receive-route connection
-        const writeResults = await Promise.all(
-          matching.map((s) => s.client.receive([msg]).then((r) => r[0])),
-        );
+        const writeResults = perMsgResults[i];
         const failed = writeResults.find((r) => !r.accepted);
-        results.push(failed ?? writeResults[0]);
-      }
-      return results;
+        return failed ?? writeResults[0];
+      });
     },
 
     async read<T = unknown>(urls: string[]): Promise<Output<T>[]> {
